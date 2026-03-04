@@ -172,7 +172,7 @@ function DownloadContent() {
 
   // ✅ 最終資料
   const md = verify?.metadata || {};
-  const plan = normalizePlan(md.plan || urlPlan);
+  const plan = normalizePlan((md as any).plan || urlPlan);
 
   // ✅ DUO 判斷（但 Mystery 強制唔用 DUO）
   const qtyRaw =
@@ -186,19 +186,19 @@ function DownloadContent() {
 
   const isDuo = plan === "mystery" ? false : qtyRaw >= 2;
 
-  const theme = (md.theme || urlTheme) || "balance";
-  const label = (md.label || urlLabel) || "harmony";
-  const lang = ((md.lang || urlLang) || "tc").toLowerCase();
-  const style = ((md.style || urlStyle) || "SA").toUpperCase();
-  const isPhrase = ((md.type || urlType) || "single") === "phrase";
+  const theme = ((md as any).theme || urlTheme) || "balance";
+  const label = ((md as any).label || urlLabel) || "harmony";
+  const lang = (((md as any).lang || urlLang) || "tc").toLowerCase();
+  const style = (((md as any).style || urlStyle) || "SA").toUpperCase();
+  const isPhrase = (((md as any).type || urlType) || "single") === "phrase";
 
   // ✅ DUO 第二份資料
-  const theme2 = (md.theme2 || urlTheme2 || theme) as string;
-  const label2 = (md.label2 || urlLabel2 || "") as string;
-  const lang2 = (((md.lang2 || urlLang2) || lang) as string).toLowerCase();
-  const style2 = (((md.style2 || urlStyle2) || style) as string).toUpperCase();
+  const theme2 = (((md as any).theme2 || urlTheme2) || theme) as string;
+  const label2 = (((md as any).label2 || urlLabel2) || "") as string;
+  const lang2 = ((((md as any).lang2 || urlLang2) || lang) as string).toLowerCase();
+  const style2 = ((((md as any).style2 || urlStyle2) || style) as string).toUpperCase();
   const isPhrase2 =
-    (((md.type2 || urlType2) || "single") as string).toLowerCase() === "phrase";
+    ((((md as any).type2 || urlType2) || "single") as string).toLowerCase() === "phrase";
 
   const days = planDays(plan);
 
@@ -404,8 +404,9 @@ function DownloadContent() {
                 </div>
               ) : null}
 
+              {/* ✅ 重要：移除 download 屬性，避免錯誤時下載 download.json */}
               {downloads.map((d) => (
-                <a key={d.key} href={d.href} download className={d.className}>
+                <a key={d.key} href={d.href} className={d.className}>
                   <span style={{ fontSize: 18 }}>↓</span> {d.label}
                 </a>
               ))}
@@ -439,7 +440,6 @@ function DownloadContent() {
 export default function DownloadPage() {
   return (
     <>
-      {/* ✅ 放喺最外層，避免 layout “走樣” */}
       <link
         href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;800&family=Inter:wght@400;500;600;700;800;900&display=swap"
         rel="stylesheet"
@@ -447,13 +447,16 @@ export default function DownloadPage() {
 
       <style jsx global>{`
         :root {
-          --bg: #fbf6ee;
+          /* ✅ 更奶油、唔會「白到刺眼」 */
+          --bg: #f7f0e6;
           --card: #ffffff;
           --ink: #111;
           --muted: rgba(0, 0, 0, 0.62);
           --border: rgba(0, 0, 0, 0.08);
-          --gold: #caa34a;
-          --goldDeep: #8a6a1c;
+
+          /* ✅ 金色降低飽和 + 深金更穩重 */
+          --gold: #c5a14a;
+          --goldDeep: #7a5b18;
         }
         * {
           box-sizing: border-box;
@@ -480,7 +483,7 @@ export default function DownloadPage() {
           border: 1px solid var(--border);
           border-radius: 24px;
           padding: 48px 40px;
-          max-width: 640px;
+          max-width: 680px;
           width: 100%;
           text-align: center;
           box-shadow: 0 20px 50px rgba(0, 0, 0, 0.05);
@@ -517,8 +520,8 @@ export default function DownloadPage() {
           margin-bottom: 26px;
         }
         .box {
-          background: #f9f9f9;
-          border: 1px dashed rgba(0, 0, 0, 0.15);
+          background: rgba(255, 255, 255, 0.65);
+          border: 1px dashed rgba(0, 0, 0, 0.14);
           border-radius: 16px;
           padding: 22px;
           margin-bottom: 26px;
@@ -554,8 +557,8 @@ export default function DownloadPage() {
           font-size: 11px;
           font-weight: 900;
           color: var(--goldDeep);
-          background: rgba(202, 163, 74, 0.12);
-          border: 1px solid rgba(202, 163, 74, 0.25);
+          background: rgba(197, 161, 74, 0.12);
+          border: 1px solid rgba(197, 161, 74, 0.24);
           padding: 6px 10px;
           border-radius: 999px;
           white-space: nowrap;
@@ -566,7 +569,7 @@ export default function DownloadPage() {
           margin: 16px 0;
         }
         .policy {
-          background: rgba(255, 255, 255, 0.7);
+          background: rgba(255, 255, 255, 0.75);
           border: 1px solid rgba(0, 0, 0, 0.08);
           border-radius: 14px;
           padding: 14px 14px;
@@ -634,21 +637,17 @@ export default function DownloadPage() {
           border-radius: 12px;
           font-weight: 800;
           font-size: 15px;
-          background: linear-gradient(
-            180deg,
-            rgba(202, 163, 74, 0.98),
-            rgba(202, 163, 74, 0.82)
-          );
+          background: linear-gradient(180deg, rgba(197, 161, 74, 0.98), rgba(197, 161, 74, 0.84));
           color: #1b1b1b;
-          box-shadow: 0 8px 24px rgba(202, 163, 74, 0.25);
+          box-shadow: 0 10px 26px rgba(197, 161, 74, 0.22);
           transition: all 0.2s ease;
           margin-bottom: 12px;
           text-align: center;
         }
         .btnGold:hover {
           transform: translateY(-2px);
-          box-shadow: 0 12px 32px rgba(202, 163, 74, 0.35);
-          filter: brightness(1.03);
+          box-shadow: 0 14px 34px rgba(197, 161, 74, 0.28);
+          filter: brightness(1.02);
         }
         .btnGold:active {
           transform: translateY(1px);

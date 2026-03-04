@@ -50,24 +50,40 @@ export async function GET(req: Request) {
     const ROOT = path.join(process.cwd(), "storage", "designs");
 
     /**
-     * 基礎資料夾對應
+     * ✅ plan -> folder mapping
+     * 允許前端直接傳 folder key（premium_png / premium_svg / mystery_png）
      */
     const PLAN_TO_FOLDER: Record<string, string> = {
       basic: "basic_png",
       standard: "standard_png",
-      premium: "premium_png", // 預設為 PNG
+      premium: "premium_png", // 預設 premium 係 PNG
+      premium_png: "premium_png",
+      premium_svg: "premium_svg",
       mystery: "mystery_png",
+      mystery_png: "mystery_png",
     };
 
+    // ✅ 如果前端直接傳 folder key，照收；否則用 mapping
     let planFolder = PLAN_TO_FOLDER[planRaw] || planRaw;
 
-    // ✅ 關鍵修正：如果是 Premium 且檔案是 .svg，自動跳轉到 premium_svg 資料夾
-    if (planRaw === "premium" && file.toLowerCase().endsWith(".svg")) {
+    // ✅ 防止 file 係空時就做 .toLowerCase() 爆
+    const fileExt = path.extname(file || "").toLowerCase();
+
+    /**
+     * ✅ 關鍵修正（保險）：
+     * - 如果有人用 plan=premium 但 file 係 .svg
+     * - 或者 plan=premium_png 但 file 係 .svg
+     * 都自動轉去 premium_svg folder
+     */
+    if (
+      (planRaw === "premium" || planRaw === "premium_png") &&
+      fileExt === ".svg"
+    ) {
       planFolder = "premium_svg";
     }
 
     // ==========================================
-    // 🎲 方案 A：Mystery (隨機抽圖)
+    // 🎲 Mystery：隨機抽圖（鎖定 order_id）
     // ==========================================
     if (planRaw === "mystery" || planRaw === "mystery_png") {
       const targetDir = path.join(ROOT, "mystery_png");
@@ -75,14 +91,22 @@ export async function GET(req: Request) {
       const allPngs = getAllPngsAbs(targetDir);
       if (allPngs.length === 0) {
         console.error("[Download] Mystery folder empty or missing:", targetDir);
-        return NextResponse.json({ error: "No files available for mystery" }, { status: 404 });
+        return NextResponse.json(
+          { error: "No files available for mystery" },
+          { status: 404 }
+        );
       }
 
-      const idx = orderId ? stableIndex(orderId, allPngs.length) : Math.floor(Math.random() * allPngs.length);
+      const idx = orderId
+        ? stableIndex(orderId, allPngs.length)
+        : Math.floor(Math.random() * allPngs.length);
+
       const absPath = allPngs[idx];
       const buf = fs.readFileSync(absPath);
 
-      const safeName = orderId ? `Mystery_Tattoo_${orderId.slice(-6)}.png` : "Mystery_Tattoo.png";
+      const safeName = orderId
+        ? `Mystery_Tattoo_${orderId.slice(-6)}.png`
+        : "Mystery_Tattoo.png";
 
       return new NextResponse(buf, {
         status: 200,
@@ -95,35 +119,48 @@ export async function GET(req: Request) {
     }
 
     // ==========================================
-    // 📦 方案 B：正常下載 (需要 file 參數)
+    // 📦 Normal：需要 file 參數
     // ==========================================
     if (!file) {
-      return NextResponse.json({ error: "Missing file parameter" }, { status: 400 });
+      return NextResponse.json(
+        { error: "Missing file parameter" },
+        { status: 400 }
+      );
     }
 
-    // 安全檢查：防止路徑跳脫
+    // ✅ 移除開頭斜線（避免變成絕對路徑）
+    while (file.startsWith("/")) file = file.slice(1);
+
+    // ✅ 安全檢查：防止路徑跳脫
     if (file.includes("..") || file.includes("\\") || file.includes("\0")) {
       return NextResponse.json({ error: "Invalid file path" }, { status: 400 });
     }
 
     const baseDir = path.join(ROOT, planFolder);
     let finalPath = path.join(baseDir, file);
+
+    // ✅ 再做一次「必須留喺 baseDir」的保護（防 path traversal）
+    const resolvedBase = path.resolve(baseDir) + path.sep;
+    const resolvedFinal = path.resolve(finalPath);
+    if (!resolvedFinal.startsWith(resolvedBase)) {
+      return NextResponse.json({ error: "Access denied" }, { status: 403 });
+    }
+
     let found = fs.existsSync(finalPath);
 
-    // ✅ 容錯機制：如果搵唔到，試下喺子資料夾搵（例如 Duo Plan 嘅 Set 1 / Set 2）
+    // ✅ 容錯：如果搵唔到，試下喺子資料夾搵（1 層）
     if (!found) {
       const pureFileName = path.basename(file);
       if (fs.existsSync(baseDir)) {
         try {
           const entries = fs.readdirSync(baseDir, { withFileTypes: true });
           for (const entry of entries) {
-            if (entry.isDirectory()) {
-              const tryPath = path.join(baseDir, entry.name, pureFileName);
-              if (fs.existsSync(tryPath)) {
-                finalPath = tryPath;
-                found = true;
-                break;
-              }
+            if (!entry.isDirectory()) continue;
+            const tryPath = path.join(baseDir, entry.name, pureFileName);
+            if (fs.existsSync(tryPath)) {
+              finalPath = tryPath;
+              found = true;
+              break;
             }
           }
         } catch (e) {
@@ -133,13 +170,16 @@ export async function GET(req: Request) {
     }
 
     if (!found) {
-      // 呢度嘅 log 會喺 Vercel 控制台出現，幫你 debug 係咪路徑寫錯
       console.error("[Download] 404 Not Found:", {
         plan: planRaw,
         folder: planFolder,
-        expectedPath: finalPath
+        file,
+        expectedPath: finalPath,
       });
-      return NextResponse.json({ error: "File not found on server", details: `Target: ${planFolder}/${file}` }, { status: 404 });
+      return NextResponse.json(
+        { error: "File not found on server", details: `Target: ${planFolder}/${file}` },
+        { status: 404 }
+      );
     }
 
     const buf = fs.readFileSync(finalPath);
@@ -153,9 +193,11 @@ export async function GET(req: Request) {
         "Cache-Control": "private, max-age=3600",
       },
     });
-
   } catch (err: any) {
     console.error("Download Route Error:", err);
-    return NextResponse.json({ error: "Server error", details: err?.message }, { status: 500 });
+    return NextResponse.json(
+      { error: "Server error", details: err?.message },
+      { status: 500 }
+    );
   }
 }
