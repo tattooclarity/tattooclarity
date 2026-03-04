@@ -137,14 +137,20 @@ function DownloadContent() {
   const urlLabel = sp.get("label") || "harmony";
   const urlLang = (sp.get("lang") || "tc").toLowerCase();
   const urlStyle = (sp.get("style") || "SA").toUpperCase();
-  const urlType = (sp.get("type") || "single").toLowerCase(); // single/phrase
+
+  /**
+   * ✅ 重大修正：
+   * 你 storage/designs 裡面的檔名幾乎全部都有 "_phrase_"
+   * 所以 URL fallback 預設改成 "phrase"（救舊單/漏傳 type）
+   */
+  const urlType = (sp.get("type") || "phrase").toLowerCase(); // single/phrase
 
   // ✅ DUO 第二份 URL fallback
   const urlTheme2 = sp.get("theme2") || "";
   const urlLabel2 = sp.get("label2") || "";
   const urlLang2 = (sp.get("lang2") || "").toLowerCase();
   const urlStyle2 = (sp.get("style2") || "").toUpperCase();
-  const urlType2 = (sp.get("type2") || "").toLowerCase();
+  const urlType2 = (sp.get("type2") || "phrase").toLowerCase();
 
   const [loading, setLoading] = useState(true);
   const [verify, setVerify] = useState<VerifyResponse | null>(null);
@@ -237,19 +243,22 @@ function DownloadContent() {
   const label = ((md as any).label || urlLabel) || "harmony";
   const lang = (((md as any).lang || urlLang) || "tc").toLowerCase();
   const style = (((md as any).style || urlStyle) || "SA").toUpperCase();
-  const isPhrase = (((md as any).type || urlType) || "single") === "phrase";
+
+  // ✅ type 取 metadata；如果冇，就用 URL fallback（而 URL fallback 已預設 phrase）
+  const type1 = (((md as any).type || urlType) || "phrase") as string;
+  const isPhrase = type1.toLowerCase() === "phrase";
 
   // ✅ DUO 第二份資料
   const theme2 = (((md as any).theme2 || urlTheme2) || theme) as string;
   const label2 = (((md as any).label2 || urlLabel2) || "") as string;
   const lang2 = ((((md as any).lang2 || urlLang2) || lang) as string).toLowerCase();
   const style2 = ((((md as any).style2 || urlStyle2) || style) as string).toUpperCase();
-  const isPhrase2 =
-    ((((md as any).type2 || urlType2) || "single") as string).toLowerCase() === "phrase";
+
+  const type2 = (((md as any).type2 || urlType2) || "phrase") as string;
+  const isPhrase2 = type2.toLowerCase() === "phrase";
 
   const days = planDays(plan);
 
-  // ✅ 若舊 verify 有 purchased_at，就用佢；新 API 我哋用 now (上面 set 咗)
   const purchasedAtMs = verify?.purchased_at || 0;
   const invalidLink = !ok || !paid || !purchasedAtMs;
 
@@ -268,7 +277,6 @@ function DownloadContent() {
 
     // Mystery
     if (plan === "mystery") {
-      // ✅ 用 metadata 內的 mystery_file（如果冇就 fallback）
       const mysteryFile = (md as any).mystery_file || "";
       const folder = (md as any).mystery_planFolder || "mystery_png";
 
@@ -287,6 +295,7 @@ function DownloadContent() {
     const downloadPlan: string = plan === "premium" ? "premium_png" : plan;
 
     // --- SET 1 PNG ---
+    // ✅ 你檔名格式：label + _phrase + _tc/_sc + _SA/_SB/_SC
     const baseName1 = `${label}${isPhrase ? "_phrase" : ""}_${lang}_${style}`;
     const filePath1 = `${theme}/${baseName1}.png`;
 
