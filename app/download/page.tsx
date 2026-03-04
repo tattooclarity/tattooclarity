@@ -48,8 +48,7 @@ function planLabel(plan: Plan, isDuo: boolean) {
       : plan === "premium"
       ? "Premium"
       : "Mystery";
-
-  // ✅ Mystery 永遠唔顯示 DUO
+  
   if (plan === "mystery") return base;
   return isDuo ? `${base} (DUO)` : base;
 }
@@ -113,8 +112,6 @@ type VerifyResponse = {
 
 function DownloadContent() {
   const sp = useSearchParams();
-
-  // ✅ order_id 必須存在
   const orderId = sp.get("order_id") || "UNKNOWN";
 
   // URL fallback
@@ -123,9 +120,9 @@ function DownloadContent() {
   const urlLabel = sp.get("label") || "harmony";
   const urlLang = (sp.get("lang") || "tc").toLowerCase();
   const urlStyle = (sp.get("style") || "SA").toUpperCase();
-  const urlType = (sp.get("type") || "single").toLowerCase(); // single/phrase
+  const urlType = (sp.get("type") || "single").toLowerCase(); 
 
-  // ✅ DUO 第二份 URL fallback
+  // DUO fallback
   const urlTheme2 = sp.get("theme2") || "";
   const urlLabel2 = sp.get("label2") || "";
   const urlLang2 = (sp.get("lang2") || "").toLowerCase();
@@ -137,7 +134,6 @@ function DownloadContent() {
 
   useEffect(() => {
     let alive = true;
-
     async function run() {
       try {
         setLoading(true);
@@ -156,26 +152,19 @@ function DownloadContent() {
         setLoading(false);
       }
     }
-
     if (orderId && orderId.startsWith("cs_")) run();
     else {
       setVerify({ ok: false, error: "Invalid or missing order_id." });
       setLoading(false);
     }
-
-    return () => {
-      alive = false;
-    };
+    return () => { alive = false; };
   }, [orderId]);
 
   const paid = !!verify?.paid;
   const ok = !!verify?.ok;
-
-  // ✅ 最終資料
   const md = verify?.metadata || {};
   const plan = normalizePlan(md.plan || urlPlan);
 
-  // ✅ DUO 判斷（但 Mystery 強制唔用 DUO）
   const qtyRaw =
     toInt(md.qty) ||
     toInt(md.quantity) ||
@@ -184,7 +173,6 @@ function DownloadContent() {
     (toLower((md as any).bundle) === "duo" ? 2 : 0) ||
     (toBool(sp.get("duo")) ? 2 : 0) ||
     1;
-
   const isDuo = plan === "mystery" ? false : qtyRaw >= 2;
 
   const theme = (md.theme || urlTheme) || "balance";
@@ -193,70 +181,53 @@ function DownloadContent() {
   const style = ((md.style || urlStyle) || "SA").toUpperCase();
   const isPhrase = ((md.type || urlType) || "single") === "phrase";
 
-  // ✅ DUO 第二份資料
   const theme2 = (md.theme2 || urlTheme2 || theme) as string;
   const label2 = (md.label2 || urlLabel2 || "") as string;
   const lang2 = (((md.lang2 || urlLang2) || lang) as string).toLowerCase();
   const style2 = (((md.style2 || urlStyle2) || style) as string).toUpperCase();
-  const isPhrase2 =
-    (((md.type2 || urlType2) || "single") as string).toLowerCase() === "phrase";
+  const isPhrase2 = (((md.type2 || urlType2) || "single") as string).toLowerCase() === "phrase";
 
   const days = planDays(plan);
-
   const purchasedAtMs = verify?.purchased_at || 0;
   const invalidLink = !ok || !paid || !purchasedAtMs;
-
   const expiresAtMs = invalidLink ? 0 : addDays(purchasedAtMs, days);
   const isExpired = invalidLink ? true : Date.now() > expiresAtMs;
-
   const missingDuoSecond = isDuo && !label2;
 
-  /**
-   * ✅ Download list (✅ Mystery: 讀 Stripe metadata 的 mystery_file 隨機結果)
-   * checkout route 已經把每單抽到的檔名寫入 md.mystery_file
-   */
   const downloads = useMemo(() => {
     const list: Array<{ key: string; label: string; href: string; className: string }> = [];
-
-    // ✅ /api/download 的 plan key（你 download route 已經 map 咗 mystery -> standard_png）
     const downloadPlan: string = plan === "premium" ? "premium_png" : plan;
 
-    // --- SET 1 PNG ---
     let baseName1 = "";
-    let filePath1 = "";
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    let filePath1 = ""; 
     let pngLabel1 = "";
 
     if (plan === "mystery") {
-      // ✅ 重要：優先用 Stripe metadata 的 random 結果
-      // - 期望格式: "love/love_phrase_tc_SA.png" 或 "mystery/xxx.png"
-      // - fallback: 你救火固定檔
-      const picked = toStr((md as any).mystery_file).trim();
-      filePath1 = picked || "mystery/mystery_mystery_MYSTERY.png";
-      pngLabel1 = "Download Mystery PNG (Standard Quality)";
+      pngLabel1 = "Download Mystery Tattoo (Standard Quality)";
+      const mysteryHref = `/api/download?plan=mystery&order_id=${encodeURIComponent(orderId)}`;
+      list.push({ key: "mystery", label: pngLabel1, href: mysteryHref, className: "btnGold" });
     } else {
       baseName1 = `${label}${isPhrase ? "_phrase" : ""}_${lang}_${style}`;
       filePath1 = `${theme}/${baseName1}.png`;
-
       if (plan === "basic") pngLabel1 = "Download 3000×3000px White Background PNG (Set 1)";
       else pngLabel1 = "Download 3000×3000px Transparent Background PNG (Set 1)";
+      
+      list.push({
+        key: "png1",
+        label: pngLabel1,
+        href: `/api/download?plan=${encodeURIComponent(downloadPlan)}&file=${encodeURIComponent(filePath1)}`,
+        className: "btnGold",
+      });
     }
 
-    list.push({
-      key: "png1",
-      label: pngLabel1,
-      href: `/api/download?plan=${encodeURIComponent(downloadPlan)}&file=${encodeURIComponent(filePath1)}`,
-      className: "btnGold",
-    });
-
-    // --- SET 2 PNG (DUO) ---
     if (plan !== "mystery" && isDuo && label2) {
       const baseName2 = `${label2}${isPhrase2 ? "_phrase" : ""}_${lang2}_${style2}`;
       const filePath2 = `${theme2}/${baseName2}.png`;
-
       let pngLabel2 = "Download 3000×3000px PNG (Set 2)";
       if (plan === "basic") pngLabel2 = "Download 3000×3000px White Background PNG (Set 2)";
       else pngLabel2 = "Download 3000×3000px Transparent Background PNG (Set 2)";
-
+      
       list.push({
         key: "png2",
         label: pngLabel2,
@@ -265,11 +236,9 @@ function DownloadContent() {
       });
     }
 
-    // --- Premium SVG ---
     if (plan === "premium") {
       const svgPath1 = `${theme}/${baseName1}.svg`;
       const svgLabel1 = isDuo ? "Download Vector SVG (Set 1)" : "Download Vector SVG";
-
       list.push({
         key: "svg1",
         label: svgLabel1,
@@ -280,7 +249,6 @@ function DownloadContent() {
       if (isDuo && label2) {
         const baseName2 = `${label2}${isPhrase2 ? "_phrase" : ""}_${lang2}_${style2}`;
         const svgPath2 = `${theme2}/${baseName2}.svg`;
-
         list.push({
           key: "svg2",
           label: "Download Vector SVG (Set 2)",
@@ -289,23 +257,8 @@ function DownloadContent() {
         });
       }
     }
-
     return list;
-  }, [
-    plan,
-    theme,
-    label,
-    lang,
-    style,
-    isPhrase,
-    isDuo,
-    theme2,
-    label2,
-    lang2,
-    style2,
-    isPhrase2,
-    md,
-  ]);
+  }, [plan, theme, label, lang, style, isPhrase, isDuo, theme2, label2, lang2, style2, isPhrase2, orderId]);
 
   return (
     <div className="page">
@@ -313,14 +266,9 @@ function DownloadContent() {
         <div className="topLabel">DOWNLOAD CENTER</div>
         <h1 className="title">Download Ready</h1>
         <p className="subtitle">Your purchase is confirmed. Download your files below.</p>
-
-        <div className="orderRef">
-          ORDER REFERENCE: <span style={{ color: "rgba(0,0,0,0.65)" }}>#{orderId}</span>
-        </div>
-
+        <div className="orderRef">ORDER REFERENCE: <span style={{ color: "rgba(0,0,0,0.65)" }}>#{orderId}</span></div>
         <div className="box">
           <div className="boxLabel">YOUR PURCHASE</div>
-
           <div className="purchaseRow">
             <div className="purchaseLeft">
               <div className="purchasePlan">{planLabel(plan, isDuo)} Plan</div>
@@ -328,126 +276,70 @@ function DownloadContent() {
             </div>
             <div className="pill">{pillText(plan)}</div>
           </div>
-
           <div className="divider" />
-
           <div className="policy">
             <div className="policyRow">
               <span className="policyKey">Download access:</span>
               <span className="policyVal">{days} days</span>
             </div>
-
             {!invalidLink && (
               <div className="policyRow">
                 <span className="policyKey">Expires on:</span>
                 <span className="policyVal">{formatDate(expiresAtMs)}</span>
               </div>
             )}
-
             {loading ? (
               <div className="policyNote">Verifying your payment…</div>
             ) : invalidLink ? (
               <div className="policyNote">
                 This link is missing purchase verification data. Please contact support with your order reference.
-                {verify?.error ? (
-                  <>
-                    <br />
-                    <span className="mono">{verify.error}</span>
-                  </>
-                ) : null}
+                {verify?.error ? (<><br /><span className="mono">{verify.error}</span></>) : null}
               </div>
             ) : (
-              <div className="policyNote">
-                Please download and back up your files immediately. Links expire automatically.
-              </div>
+              <div className="policyNote">Please download and back up your files immediately. Links expire automatically.</div>
             )}
           </div>
-
           <div className="divider" />
-
-          <div className="boxLabel" style={{ marginTop: 2 }}>
-            DOWNLOAD
-          </div>
-
+          <div className="boxLabel" style={{ marginTop: 2 }}>DOWNLOAD</div>
           {isExpired ? (
             <div className="expiredBox">
-              <div className="expiredTitle">
-                {invalidLink ? "Invalid download link." : "This download link has expired."}
-              </div>
-              <div className="expiredText">
-                If you need access again, please contact support with your order reference.
-              </div>
-              <a
-                href={mailtoSupport(
-                  `${invalidLink ? "Invalid Download Link" : "Expired Download"} - Order ${orderId}`
-                )}
-                className="btnOutline"
-                style={{ marginTop: 12 }}
-              >
-                Contact Support
-              </a>
+              <div className="expiredTitle">{invalidLink ? "Invalid download link." : "This download link has expired."}</div>
+              <div className="expiredText">If you need access again, please contact support with your order reference.</div>
+              <a href={mailtoSupport(`${invalidLink ? "Invalid Download Link" : "Expired Download"} - Order ${orderId}`)} className="btnOutline" style={{ marginTop: 12 }}>Contact Support</a>
             </div>
           ) : (
             <>
               {missingDuoSecond && plan !== "mystery" ? (
                 <div className="expiredBox">
                   <div className="expiredTitle">DUO purchase detected, but Set 2 data is missing.</div>
-                  <div className="expiredText">
-                    Please contact support with your order reference so we can resend Set 2.
-                  </div>
-                  <a
-                    href={mailtoSupport(`Missing DUO Set 2 - Order ${orderId}`)}
-                    className="btnOutline"
-                    style={{ marginTop: 12 }}
-                  >
-                    Contact Support
-                  </a>
+                  <div className="expiredText">Please contact support with your order reference so we can resend Set 2.</div>
+                  <a href={mailtoSupport(`Missing DUO Set 2 - Order ${orderId}`)} className="btnOutline" style={{ marginTop: 12 }}>Contact Support</a>
                 </div>
               ) : null}
-
               {downloads.map((d) => (
-                <a key={d.key} href={d.href} download className={d.className}>
-                  <span style={{ fontSize: 18 }}>↓</span> {d.label}
-                </a>
+                <a key={d.key} href={d.href} download className={d.className}><span style={{ fontSize: 18 }}>↓</span> {d.label}</a>
               ))}
-
-              {plan === "basic" && (
-                <div className="hint">*Transparent background is available in Standard/Premium.</div>
-              )}
+              {plan === "basic" && <div className="hint">*Transparent background is available in Standard/Premium.</div>}
               {plan === "standard" && <div className="hint">*Vector SVG is only available in Premium.</div>}
-              {plan === "mystery" && (
-                <div className="hint">
-                  *Mystery delivers a randomly selected Standard-quality PNG (locked to your order).
-                </div>
-              )}
+              {plan === "mystery" && <div className="hint">*Mystery delivers a randomly selected Standard-quality PNG (locked to your order).</div>}
             </>
           )}
         </div>
-
-        <p className="supportText">
-          Need help?{" "}
-          <a href={mailtoSupport(`Help with Order ${orderId}`)} className="supportLink">
-            Contact Support
-          </a>
-        </p>
-
-        <Link href="/" className="homeLink">
-          ← Back to Homepage
-        </Link>
+        <p className="supportText">Need help? <a href={mailtoSupport(`Help with Order ${orderId}`)} className="supportLink">Contact Support</a></p>
+        <Link href="/" className="homeLink">← Back to Homepage</Link>
       </div>
     </div>
   );
 }
 
+// ✅ 修正點在下方：必須用 <> 包住 link, style, Suspense
 export default function DownloadPage() {
   return (
     <>
-      {/* ✅ 放喺最外層，避免再次「變白底」 */}
       <link
         href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;800&family=Inter:wght@400;500;600;700;800;900&display=swap"
         rel="stylesheet"
       />
-
       <style jsx global>{`
         :root {
           --bg: #fbf6ee;
@@ -458,277 +350,45 @@ export default function DownloadPage() {
           --gold: #caa34a;
           --goldDeep: #8a6a1c;
         }
-        * {
-          box-sizing: border-box;
-        }
-        body {
-          margin: 0;
-          background: var(--bg);
-          color: var(--ink);
-          font-family: Inter, system-ui, -apple-system, sans-serif;
-        }
-        a {
-          color: inherit;
-          text-decoration: none;
-        }
-        .page {
-          min-height: 100vh;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          padding: 20px;
-        }
-        .card {
-          background: var(--card);
-          border: 1px solid var(--border);
-          border-radius: 24px;
-          padding: 48px 40px;
-          max-width: 640px;
-          width: 100%;
-          text-align: center;
-          box-shadow: 0 20px 50px rgba(0, 0, 0, 0.05);
-        }
-        .topLabel {
-          font-size: 12px;
-          font-weight: 800;
-          color: rgba(0, 0, 0, 0.35);
-          letter-spacing: 0.08em;
-          text-transform: uppercase;
-          margin-bottom: 16px;
-        }
-        .title {
-          font-family: "Playfair Display", serif;
-          font-size: 34px;
-          font-weight: 800;
-          color: var(--ink);
-          margin: 0 0 10px;
-          letter-spacing: -0.02em;
-        }
-        .subtitle {
-          font-size: 15px;
-          color: var(--muted);
-          line-height: 1.5;
-          margin: 0 0 10px;
-          font-weight: 500;
-        }
-        .orderRef {
-          font-size: 12px;
-          font-weight: 800;
-          color: rgba(0, 0, 0, 0.4);
-          letter-spacing: 0.05em;
-          text-transform: uppercase;
-          margin-bottom: 26px;
-        }
-        .box {
-          background: #f9f9f9;
-          border: 1px dashed rgba(0, 0, 0, 0.15);
-          border-radius: 16px;
-          padding: 22px;
-          margin-bottom: 26px;
-          text-align: left;
-        }
-        .boxLabel {
-          font-size: 12px;
-          font-weight: 800;
-          color: rgba(0, 0, 0, 0.5);
-          text-transform: uppercase;
-          letter-spacing: 0.1em;
-          margin-bottom: 12px;
-        }
-        .purchaseRow {
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          gap: 14px;
-        }
-        .purchasePlan {
-          font-size: 16px;
-          font-weight: 900;
-          color: #111;
-        }
-        .purchaseIncludes {
-          margin-top: 4px;
-          font-size: 12px;
-          font-weight: 700;
-          color: rgba(0, 0, 0, 0.55);
-        }
-        .pill {
-          flex: 0 0 auto;
-          font-size: 11px;
-          font-weight: 900;
-          color: var(--goldDeep);
-          background: rgba(202, 163, 74, 0.12);
-          border: 1px solid rgba(202, 163, 74, 0.25);
-          padding: 6px 10px;
-          border-radius: 999px;
-          white-space: nowrap;
-        }
-        .divider {
-          height: 1px;
-          background: rgba(0, 0, 0, 0.08);
-          margin: 16px 0;
-        }
-        .policy {
-          background: rgba(255, 255, 255, 0.7);
-          border: 1px solid rgba(0, 0, 0, 0.08);
-          border-radius: 14px;
-          padding: 14px 14px;
-        }
-        .policyRow {
-          display: flex;
-          align-items: baseline;
-          justify-content: space-between;
-          gap: 12px;
-          margin: 2px 0;
-        }
-        .policyKey {
-          font-size: 12px;
-          font-weight: 900;
-          color: rgba(0, 0, 0, 0.55);
-          text-transform: uppercase;
-          letter-spacing: 0.06em;
-        }
-        .policyVal {
-          font-size: 13px;
-          font-weight: 900;
-          color: rgba(0, 0, 0, 0.78);
-        }
-        .policyNote {
-          margin-top: 10px;
-          font-size: 12px;
-          color: rgba(0, 0, 0, 0.48);
-          font-weight: 650;
-          text-align: center;
-          line-height: 1.4;
-        }
-        .mono {
-          font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-          font-weight: 900;
-        }
-        .expiredBox {
-          border: 1px solid rgba(0, 0, 0, 0.1);
-          background: rgba(255, 255, 255, 0.85);
-          border-radius: 14px;
-          padding: 14px;
-          text-align: center;
-          margin-bottom: 12px;
-        }
-        .expiredTitle {
-          font-weight: 900;
-          font-size: 14px;
-          color: rgba(0, 0, 0, 0.82);
-        }
-        .expiredText {
-          margin-top: 6px;
-          font-size: 12px;
-          font-weight: 650;
-          color: rgba(0, 0, 0, 0.52);
-          line-height: 1.45;
-        }
-        .btnGold {
-          width: 100%;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          gap: 8px;
-          border: 0;
-          cursor: pointer;
-          padding: 16px 18px;
-          border-radius: 12px;
-          font-weight: 800;
-          font-size: 15px;
-          background: linear-gradient(
-            180deg,
-            rgba(202, 163, 74, 0.98),
-            rgba(202, 163, 74, 0.82)
-          );
-          color: #1b1b1b;
-          box-shadow: 0 8px 24px rgba(202, 163, 74, 0.25);
-          transition: all 0.2s ease;
-          margin-bottom: 12px;
-          text-align: center;
-        }
-        .btnGold:hover {
-          transform: translateY(-2px);
-          box-shadow: 0 12px 32px rgba(202, 163, 74, 0.35);
-          filter: brightness(1.03);
-        }
-        .btnGold:active {
-          transform: translateY(1px);
-        }
-        .btnOutline {
-          width: 100%;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          gap: 8px;
-          border: 1.5px solid rgba(0, 0, 0, 0.12);
-          background: #fff;
-          padding: 14px 18px;
-          border-radius: 12px;
-          font-size: 15px;
-          font-weight: 700;
-          cursor: pointer;
-          color: rgba(0, 0, 0, 0.7);
-          transition: all 0.2s;
-          text-align: center;
-          margin-bottom: 12px;
-        }
-        .btnOutline:hover {
-          border-color: rgba(0, 0, 0, 0.3);
-          color: #111;
-          background: #fafafa;
-        }
-        .hint {
-          font-size: 12px;
-          color: rgba(0, 0, 0, 0.45);
-          margin-top: 8px;
-          font-weight: 600;
-          text-align: center;
-        }
-        .supportText {
-          font-size: 13px;
-          color: rgba(0, 0, 0, 0.5);
-          font-weight: 500;
-          margin: 0;
-          text-align: center;
-        }
-        .supportLink {
-          color: var(--gold);
-          font-weight: 800;
-          text-decoration: none;
-        }
-        .supportLink:hover {
-          color: #111;
-          text-decoration: underline;
-        }
-        .homeLink {
-          display: inline-block;
-          margin-top: 24px;
-          font-size: 12px;
-          font-weight: 800;
-          color: rgba(0, 0, 0, 0.35);
-          text-transform: uppercase;
-          letter-spacing: 0.05em;
-          transition: color 0.2s;
-        }
-        .homeLink:hover {
-          color: var(--ink);
-        }
-        @media (max-width: 720px) {
-          .card {
-            padding: 36px 18px;
-            border-radius: 20px;
-          }
-          .title {
-            font-size: 30px;
-          }
-        }
+        * { box-sizing: border-box; }
+        body { margin: 0; background: var(--bg); color: var(--ink); font-family: Inter, system-ui, -apple-system, sans-serif; }
+        a { color: inherit; text-decoration: none; }
+        .page { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 20px; }
+        .card { background: var(--card); border: 1px solid var(--border); border-radius: 24px; padding: 48px 40px; max-width: 640px; width: 100%; text-align: center; box-shadow: 0 20px 50px rgba(0, 0, 0, 0.05); }
+        .topLabel { font-size: 12px; font-weight: 800; color: rgba(0, 0, 0, 0.35); letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 16px; }
+        .title { font-family: "Playfair Display", serif; font-size: 34px; font-weight: 800; color: var(--ink); margin: 0 0 10px; letter-spacing: -0.02em; }
+        .subtitle { font-size: 15px; color: var(--muted); line-height: 1.5; margin: 0 0 10px; font-weight: 500; }
+        .orderRef { font-size: 12px; font-weight: 800; color: rgba(0, 0, 0, 0.4); letter-spacing: 0.05em; text-transform: uppercase; margin-bottom: 26px; }
+        .box { background: #f9f9f9; border: 1px dashed rgba(0, 0, 0, 0.15); border-radius: 16px; padding: 22px; margin-bottom: 26px; text-align: left; }
+        .boxLabel { font-size: 12px; font-weight: 800; color: rgba(0, 0, 0, 0.5); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 12px; }
+        .purchaseRow { display: flex; align-items: center; justify-content: space-between; gap: 14px; }
+        .purchasePlan { font-size: 16px; font-weight: 900; color: #111; }
+        .purchaseIncludes { margin-top: 4px; font-size: 12px; font-weight: 700; color: rgba(0, 0, 0, 0.55); }
+        .pill { flex: 0 0 auto; font-size: 11px; font-weight: 900; color: var(--goldDeep); background: rgba(202, 163, 74, 0.12); border: 1px solid rgba(202, 163, 74, 0.25); padding: 6px 10px; border-radius: 999px; white-space: nowrap; }
+        .divider { height: 1px; background: rgba(0, 0, 0, 0.08); margin: 16px 0; }
+        .policy { background: rgba(255, 255, 255, 0.7); border: 1px solid rgba(0, 0, 0, 0.08); border-radius: 14px; padding: 14px 14px; }
+        .policyRow { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin: 2px 0; }
+        .policyKey { font-size: 12px; font-weight: 900; color: rgba(0, 0, 0, 0.55); text-transform: uppercase; letter-spacing: 0.06em; }
+        .policyVal { font-size: 13px; font-weight: 900; color: rgba(0, 0, 0, 0.78); }
+        .policyNote { margin-top: 10px; font-size: 12px; color: rgba(0, 0, 0, 0.48); font-weight: 650; text-align: center; line-height: 1.4; }
+        .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-weight: 900; }
+        .expiredBox { border: 1px solid rgba(0, 0, 0, 0.1); background: rgba(255, 255, 255, 0.85); border-radius: 14px; padding: 14px; text-align: center; margin-bottom: 12px; }
+        .expiredTitle { font-weight: 900; font-size: 14px; color: rgba(0, 0, 0, 0.82); }
+        .expiredText { margin-top: 6px; font-size: 12px; font-weight: 650; color: rgba(0, 0, 0, 0.52); line-height: 1.45; }
+        .btnGold { width: 100%; display: flex; align-items: center; justify-content: center; gap: 8px; border: 0; cursor: pointer; padding: 16px 18px; border-radius: 12px; font-weight: 800; font-size: 15px; background: linear-gradient(180deg, rgba(202, 163, 74, 0.98), rgba(202, 163, 74, 0.82)); color: #1b1b1b; box-shadow: 0 8px 24px rgba(202, 163, 74, 0.25); transition: all 0.2s ease; margin-bottom: 12px; text-align: center; }
+        .btnGold:hover { transform: translateY(-2px); box-shadow: 0 12px 32px rgba(202, 163, 74, 0.35); filter: brightness(1.03); }
+        .btnGold:active { transform: translateY(1px); }
+        .btnOutline { width: 100%; display: flex; align-items: center; justify-content: center; gap: 8px; border: 1.5px solid rgba(0, 0, 0, 0.12); background: #fff; padding: 14px 18px; border-radius: 12px; font-size: 15px; font-weight: 700; cursor: pointer; color: rgba(0, 0, 0, 0.7); transition: all 0.2s; text-align: center; margin-bottom: 12px; }
+        .btnOutline:hover { border-color: rgba(0, 0, 0, 0.3); color: #111; background: #fafafa; }
+        .hint { font-size: 12px; color: rgba(0, 0, 0, 0.45); margin-top: 8px; font-weight: 600; text-align: center; }
+        .supportText { font-size: 13px; color: rgba(0, 0, 0, 0.5); font-weight: 500; margin: 0; text-align: center; }
+        .supportLink { color: var(--gold); font-weight: 800; text-decoration: none; }
+        .supportLink:hover { color: #111; text-decoration: underline; }
+        .homeLink { display: inline-block; margin-top: 24px; font-size: 12px; font-weight: 800; color: rgba(0, 0, 0, 0.35); text-transform: uppercase; letter-spacing: 0.05em; transition: color 0.2s; }
+        .homeLink:hover { color: var(--ink); }
+        @media (max-width: 720px) { .card { padding: 36px 18px; border-radius: 20px; } .title { font-size: 30px; } }
       `}</style>
-
-      <Suspense
-        fallback={<div style={{ textAlign: "center", padding: "40px" }}>Loading downloads...</div>}
-      >
+      <Suspense fallback={<div style={{ textAlign: "center", padding: "40px" }}>Loading downloads...</div>}>
         <DownloadContent />
       </Suspense>
     </>
