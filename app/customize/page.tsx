@@ -207,7 +207,7 @@ const PACKAGE_DATA: Record<
 const ARM_CLICKS_TO_HIDE = 3;
 const HIDE_AFTER_MS = 5000;
 
-// ✅ Safer slugify function
+// ✅ FIXED 1: Safer slugify function
 const toSlug = (s: string) =>
   String(s || '')
     .trim()
@@ -215,25 +215,25 @@ const toSlug = (s: string) =>
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '');
 
-// ✅ Granular metadata extraction
+// ✅ FIXED 2: Granular metadata extraction
 const pickToMeta = (p: PickChoice) => {
   const theme = p.themeId;
   const label = toSlug(p.option.label);
   const lang = p.script === 'simplified' ? 'sc' : 'tc';
   const letter = (p.fontId.match(/-(A|B|C)$/i)?.[1] || 'A').toUpperCase();
-
+  
   const style = `S${letter}`;
   const styleLetter = letter;
   const type = p.usePhrase ? 'phrase' : 'single';
-
-  return {
-    theme,
-    label,
-    lang,
-    style,
+  
+  return { 
+    theme, 
+    label, 
+    lang, 
+    style, 
     styleLetter,
     type,
-    fontId: p.fontId,
+    fontId: p.fontId
   };
 };
 
@@ -371,7 +371,7 @@ function CustomizeContent() {
             script: 'traditional',
             usePhrase: false,
             fontId: 'trad-A',
-          },
+            },
         ];
       }
       return filtered;
@@ -415,7 +415,6 @@ function CustomizeContent() {
     router.replace(`/customize?${qs.toString()}`, { scroll: false });
   };
 
-  // ✅ FIX: existingIdx 需要包含 script，避免 Premium TC/SC 選取時「誤刪 / 誤判同一粒」
   const toggleChar = (theme: Theme, charObj: CharacterOption) => {
     if (isMystery) return;
 
@@ -429,11 +428,7 @@ function CustomizeContent() {
 
     setPicked((prev) => {
       const existingIdx = prev.findIndex(
-        (p) =>
-          p.themeId === theme.id &&
-          p.option.label === charObj.label &&
-          p.usePhrase === usePhraseForThisPick &&
-          p.script === pickScript // ✅ 新增
+        (p) => p.themeId === theme.id && p.option.label === charObj.label && p.usePhrase === usePhraseForThisPick
       );
 
       if (existingIdx !== -1) return prev.filter((_, idx) => idx !== existingIdx);
@@ -599,22 +594,22 @@ function CustomizeContent() {
       plan: currentPlan,
       bundle,
       qty: qtyParam,
-
+      
       theme: isMystery ? 'mystery' : (m1?.theme || ''),
       label: isMystery ? 'mystery' : (m1?.label || ''),
-      lang: isMystery ? 'mystery' : (m1?.lang || ''),
+      lang:  isMystery ? 'mystery' : (m1?.lang  || ''),
       style: isMystery ? 'mystery' : (m1?.style || ''),
       styleLetter: isMystery ? 'mystery' : (m1?.styleLetter || ''),
       fontId: isMystery ? 'mystery' : (m1?.fontId || ''),
-      type: isMystery ? 'mystery' : (m1?.type || ''),
+      type:  isMystery ? 'mystery' : (m1?.type  || ''),
 
       theme2: duoOk ? (m2?.theme || '') : '',
       label2: duoOk ? (m2?.label || '') : '',
-      lang2: duoOk ? (m2?.lang || '') : '',
+      lang2:  duoOk ? (m2?.lang  || '') : '',
       style2: duoOk ? (m2?.style || '') : '',
       styleLetter2: duoOk ? (m2?.styleLetter || '') : '',
       fontId2: duoOk ? (m2?.fontId || '') : '',
-      type2: duoOk ? (m2?.type || '') : '',
+      type2:  duoOk ? (m2?.type  || '') : '',
 
       layout: layoutParam,
       char: charParam,
@@ -740,13 +735,1208 @@ function CustomizeContent() {
         fontFamily: '"Inter", -apple-system, sans-serif',
       }}
     >
-      {/* --- 其餘內容完全照你原本 --- */}
-      {/* 你提供嘅剩餘 JSX 太長，我保持不變：請直接用你原本檔案中 toggleChar 後面嘅 JSX 貼回去即可 */}
-      {/* ✅ 只需要確保：上面 toggleChar 已替換成「包含 script 比較」版本 */}
-      {/* --- */}
-      {/* ⚠️ 提醒：如果你想我幫你“完整一字不漏”合併返下面所有 JSX，我都可以，但你呢份已經係完整檔案，
-          我而家已提供最重要會出 bug 的修正位。 */}
-      {/** 你原本 JSX 由此開始貼回即可（左欄/右欄/付款區/Export Page 都不變） **/}
+      <style jsx global>{`
+        :root {
+          --bg: #fbf6ee;
+          --card: #ffffff;
+          --ink: #111;
+          --muted: rgba(0, 0, 0, 0.62);
+          --border: rgba(0, 0, 0, 0.08);
+          --gold: #caa34a;
+          --gold-antique: #b08d35;
+          --gold-deep: #8a6a1c;
+          --red: #d9534f;
+        }
+        @keyframes gentleBounceHorizontal {
+          0%,
+          100% {
+            transform: translateX(0);
+          }
+          50% {
+            transform: translateX(4px);
+          }
+        }
+
+        /* ===== Mobile Break ===== */
+        .mobileBreak { display: none !important; }
+        @media (max-width: 640px) { 
+          .mobileBreak { display: block !important; height: 0 !important; }
+        }
+
+        /* ✅ Prevent overlapping tip text on mobile */
+        .tipPopup {
+          position: absolute;
+          top: 2px;
+          right: 145px;
+        }
+        @media (max-width: 640px) {
+          .tipPopup {
+            position: static !important;
+            width: 100%;
+            justify-content: flex-end;
+            margin-top: 6px;
+          }
+        }
+
+        @font-face {
+          font-family: 'TC-A';
+          src: url('/fonts/LXGWWenKai-TC.ttf') format('truetype');
+          font-display: swap;
+        }
+        @font-face {
+          font-family: 'TC-B';
+          src: url('/fonts/jf-openhuninn-TC.ttf') format('truetype');
+          font-display: swap;
+        }
+        @font-face {
+          font-family: 'TC-C';
+          src: url('/fonts/NotoSans-TC.ttf') format('truetype');
+          font-display: swap;
+        }
+        @font-face {
+          font-family: 'SC-A';
+          src: url('/fonts/LXGWWenKai-SC.ttf') format('truetype');
+          font-display: swap;
+        }
+        @font-face {
+          font-family: 'SC-B';
+          src: url('/fonts/MaShanZheng-SC.ttf') format('truetype');
+          font-display: swap;
+        }
+        @font-face {
+          font-family: 'SC-C';
+          src: url('/fonts/NotoSans-SC.ttf') format('truetype');
+          font-display: swap;
+        }
+
+        /* ===== Mobile / Tablet Responsive Fix ===== */
+        @media (max-width: 980px) {
+          .customizeGrid {
+            grid-template-columns: 1fr !important;
+            gap: 24px !important;
+          }
+
+          .previewCol {
+            position: static !important;
+            top: auto !important;
+          }
+
+          .plansRow {
+            flex-wrap: wrap !important;
+            gap: 10px !important;
+          }
+
+          .plansRow > button {
+            flex: 1 1 calc(50% - 10px) !important;
+          }
+
+          .planStandard {
+            transform: none !important;
+          }
+        }
+
+        @media (max-width: 520px) {
+          .plansRow > button {
+            flex: 1 1 100% !important;
+          }
+
+          .previewGrid {
+            grid-template-columns: 1fr !important;
+          }
+        }
+      `}</style>
+
+      {/* ================= 左欄 ================= */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+        <div>
+          <Link
+            href="/"
+            style={{ fontSize: 13, fontWeight: 700, color: '#aaa', textDecoration: 'none', display: 'inline-block', marginBottom: 8 }}
+          >
+            ← Back to Home
+          </Link>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <h1
+              style={{
+                margin: 0,
+                fontFamily: '"Playfair Display", serif',
+                fontSize: 32 * fontScale,
+                letterSpacing: '-0.02em',
+                color: '#111',
+              }}
+            >
+              Select Package
+            </h1>
+            {isDebugMode && (
+              <button
+                onClick={() => setDebugOverlay((v) => !v)}
+                style={{
+                  fontSize: 10,
+                  fontWeight: 900,
+                  border: '1px solid rgba(0,0,0,0.12)',
+                  padding: '5px 10px',
+                  borderRadius: 999,
+                  background: 'rgba(255,255,255,0.85)',
+                  color: 'rgba(0,0,0,0.55)',
+                  cursor: 'pointer',
+                }}
+              >
+                {debugOverlay ? 'Hide Guides' : 'Show Guides'}
+              </button>
+            )}
+          </div>
+        </div>
+
+        {isDebugMode && debugOverlay && (
+          <div
+            style={{
+              fontSize: 11,
+              fontWeight: 900,
+              color: '#e24a4a',
+              background: 'rgba(226,74,74,0.08)',
+              padding: '8px 12px',
+              borderRadius: 8,
+              border: '1px solid rgba(226,74,74,0.2)',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 4,
+            }}
+          >
+            <div>
+              📍 MALE: x: {pos.male.x.toFixed(1)}% | y: {pos.male.y.toFixed(1)}% | rot: {pos.male.rotate}° | scl:{' '}
+              {pos.male.scale.toFixed(2)}
+            </div>
+            <div>
+              📍 FEMALE: x: {pos.female.x.toFixed(1)}% | y: {pos.female.y.toFixed(1)}% | rot: {pos.female.rotate}° | scl:{' '}
+              {pos.female.scale.toFixed(2)}
+            </div>
+          </div>
+        )}
+
+        {/* Plans */}
+        <div className="plansRow" style={{ display: 'flex', alignItems: 'center', gap: 12, position: 'relative' }}>
+          <button
+            onClick={() => handlePlanClick('basic')}
+            style={{
+              flex: 1,
+              padding: '20px 12px',
+              borderRadius: 20,
+              cursor: 'pointer',
+              transition: 'all 0.25s ease',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              border: currentPlan === 'basic' ? '1.5px solid rgba(108,63,31,0.25)' : '1px solid transparent',
+              background: currentPlan === 'basic' ? '#F2E6DA' : 'rgba(255,255,255,0.65)',
+              color: currentPlan === 'basic' ? '#6c3f1f' : '#777',
+              boxShadow: currentPlan === 'basic' ? '0 10px 24px rgba(108,63,31,0.10)' : 'none',
+            }}
+          >
+            <div style={{ fontSize: 11 * fontScale, fontWeight: 800, letterSpacing: '0.05em' }}>BASIC</div>
+            <div style={{ fontSize: 24 * fontScale, fontWeight: 900, margin: '8px 0' }}>${PACKAGE_DATA.basic.price}</div>
+            <div style={{ fontSize: 9, fontWeight: 800, opacity: 0.6, marginTop: 4 }}>{PACKAGE_DATA.basic.tagline}</div>
+          </button>
+
+          <button
+            className="planStandard"
+            onClick={() => handlePlanClick('standard')}
+            style={{
+              flex: 1.3,
+              padding: '28px 16px',
+              borderRadius: 24,
+              cursor: 'pointer',
+              transition: 'all 0.25s ease',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              position: 'relative',
+              border: currentPlan === 'standard' ? '1px solid rgba(176,141,53,0.25)' : '1px solid rgba(0,0,0,0.06)',
+              background: currentPlan === 'standard' ? 'linear-gradient(135deg, #F6E7C1, #E8D2A0)' : 'rgba(255,255,255,0.85)',
+              color: currentPlan === 'standard' ? '#3b2b10' : '#111',
+              transform: currentPlan === 'standard' ? 'scale(1.1)' : 'scale(1)',
+              zIndex: currentPlan === 'standard' ? 10 : 1,
+              boxShadow: currentPlan === 'standard' ? '0 18px 36px rgba(176,141,53,0.22)' : '0 4px 12px rgba(0,0,0,0.05)',
+            }}
+          >
+            <div
+              style={{
+                position: 'absolute',
+                top: -10,
+                background: '#e24a4a',
+                color: '#fff',
+                fontSize: 10 * fontScale,
+                fontWeight: 900,
+                padding: '4px 12px',
+                borderRadius: 999,
+                letterSpacing: '0.05em',
+                boxShadow: '0 4px 10px rgba(226,74,74,0.3)',
+              }}
+            >
+              BEST VALUE
+            </div>
+
+            {/* ✅ 更強版本：Duo Active 提示 */}
+            {currentPlan === 'standard' && duoActive && (
+              <div
+                style={{
+                  position: 'absolute',
+                  bottom: -10,
+                  background: '#111',
+                  color: '#fff',
+                  fontSize: 10,
+                  fontWeight: 900,
+                  padding: '4px 10px',
+                  borderRadius: 999,
+                  letterSpacing: '0.06em',
+                  boxShadow: '0 6px 16px rgba(0,0,0,0.18)',
+                }}
+              >
+                DUO ACTIVE
+              </div>
+            )}
+
+            <div style={{ fontSize: 12 * fontScale, fontWeight: 900, letterSpacing: '0.05em', opacity: 0.95 }}>STANDARD</div>
+            <div style={{ fontSize: 10, fontWeight: 800, opacity: 0.85, marginTop: 2 }}>{PACKAGE_DATA.standard.subtitle}</div>
+            <div style={{ fontSize: 42 * fontScale, fontWeight: 900, margin: '4px 0', lineHeight: 1 }}>${standardUnit}</div>
+
+            <div
+              style={{
+                fontSize: 11 * fontScale,
+                fontWeight: 900,
+                background: currentPlan === 'standard' ? 'rgba(255,255,255,0.55)' : '#f5f5f7',
+                color: currentPlan === 'standard' ? '#3b2b10' : '#333',
+                padding: '6px 10px',
+                borderRadius: 10,
+                marginTop: 4,
+                border: '1px solid rgba(0,0,0,0.08)',
+                boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
+              }}
+            >
+              2 for USD${standardDuo} (Save ${standardSave})
+            </div>
+          </button>
+
+          <button
+            onClick={() => handlePlanClick('premium')}
+            style={{
+              flex: 1,
+              padding: '20px 12px',
+              borderRadius: 20,
+              cursor: 'pointer',
+              transition: 'all 0.25s ease',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              background: currentPlan === 'premium' ? 'rgba(202,163,74,0.18)' : 'rgba(255,255,255,0.65)',
+              border: currentPlan === 'premium' ? '2px solid #caa34a' : '1.5px solid rgba(202,163,74,0.35)',
+              color: '#8a6a1c',
+              boxShadow: currentPlan === 'premium' ? '0 14px 30px rgba(202,163,74,0.16)' : 'none',
+              position: 'relative',
+            }}
+          >
+            {/* ✅ 更強版本：Duo Active 提示 */}
+            {currentPlan === 'premium' && duoActive && (
+              <div
+                style={{
+                  position: 'absolute',
+                  bottom: -10,
+                  background: '#111',
+                  color: '#fff',
+                  fontSize: 10,
+                  fontWeight: 900,
+                  padding: '4px 10px',
+                  borderRadius: 999,
+                  letterSpacing: '0.06em',
+                  boxShadow: '0 6px 16px rgba(0,0,0,0.18)',
+                }}
+              >
+                DUO ACTIVE
+              </div>
+            )}
+
+            <div style={{ fontSize: 11 * fontScale, fontWeight: 900, letterSpacing: '0.05em', color: '#8a6a1c' }}>PREMIUM</div>
+            <div style={{ fontSize: 24 * fontScale, fontWeight: 900, margin: '8px 0', color: '#111' }}>${premiumUnit}</div>
+
+            <div
+              style={{
+                background: currentPlan === 'premium' ? 'rgba(255,255,255,0.60)' : '#fff7e7',
+                padding: '8px 10px',
+                borderRadius: 10,
+                border: '1px solid rgba(202,163,74,0.35)',
+                boxShadow: '0 2px 8px rgba(0,0,0,0.05)',
+                textAlign: 'center',
+              }}
+            >
+              <div style={{ fontSize: 11 * fontScale, fontWeight: 900, color: '#8a6a1c' }}>2 for USD ${premiumDuo}</div>
+              <div style={{ fontSize: 11 * fontScale, marginTop: 4, fontWeight: 900, color: '#8a6a1c', opacity: 0.85 }}>
+                (Save ${premiumSave})
+              </div>
+            </div>
+
+            <div style={{ fontSize: 9, fontWeight: 800, opacity: 0.6, marginTop: 6, color: 'rgba(0,0,0,0.55)' }}>
+              {PACKAGE_DATA.premium.tagline}
+            </div>
+          </button>
+        </div>
+
+        {/* Mystery */}
+        <button
+          onClick={() => handlePlanClick('mystery')}
+          style={{
+            width: '100%',
+            padding: '16px',
+            borderRadius: 18,
+            border: currentPlan === 'mystery' ? '2px solid var(--gold)' : '1.5px dashed #ccc',
+            background: currentPlan === 'mystery' ? '#fbf6ee' : 'transparent',
+            color: '#111',
+            cursor: 'pointer',
+            display: 'flex',
+            justifyContent: 'center',
+            alignItems: 'center',
+            gap: 10,
+            transition: '0.2s',
+            marginTop: 10,
+          }}
+        >
+          <Image src="/images/mystery.png" alt="Mystery gift" width={26} height={26} style={{ display: 'block', objectFit: 'contain' }} />
+          <span style={{ fontSize: 13 * fontScale, fontWeight: 800 }}>Curated Surprise – ${PACKAGE_DATA.mystery.price}</span>
+        </button>
+
+        {/* Duo toggle (only standard/premium) */}
+        {canDuo && (
+          <div
+            style={{
+              padding: '16px 20px',
+              borderRadius: 20,
+              background: '#fcfcfc',
+              border: '1px solid #eee',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              boxShadow: '0 4px 15px rgba(0,0,0,0.02)',
+            }}
+          >
+            <div>
+              {/* ✅ 更強版本：只係 duo 先 show Save */}
+              {bundle === 'duo' ? (
+                <div style={{ fontWeight: 900, fontSize: 14 * fontScale, color: '#e24a4a' }}>You save ${saveAmt}</div>
+              ) : (
+                <div style={{ fontWeight: 900, fontSize: 14 * fontScale, color: '#111' }}>Single design</div>
+              )}
+
+              <div style={{ fontSize: 11, fontWeight: 600, color: '#888', marginTop: 2 }}>
+                {bundle === 'duo' ? 'Select 2 designs (mix across themes & scripts)' : 'Select 1 design'}
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', background: '#eee', borderRadius: 999, padding: 4 }}>
+              <button
+                onClick={() => setBundle('single')}
+                style={{
+                  padding: '8px 16px',
+                  borderRadius: 999,
+                  border: 0,
+                  cursor: 'pointer',
+                  fontWeight: 800,
+                  fontSize: 12,
+                  background: bundle === 'single' ? '#fff' : 'transparent',
+                  color: bundle === 'single' ? '#111' : '#888',
+                  boxShadow: bundle === 'single' ? '0 2px 8px rgba(0,0,0,0.1)' : 'none',
+                  transition: '0.2s',
+                }}
+              >
+                Single
+              </button>
+              <button
+                onClick={() => setBundle('duo')}
+                style={{
+                  padding: '8px 16px',
+                  borderRadius: 999,
+                  border: 0,
+                  cursor: 'pointer',
+                  fontWeight: 800,
+                  fontSize: 12,
+                  background: bundle === 'duo' ? '#fff' : 'transparent',
+                  color: bundle === 'duo' ? '#e24a4a' : '#888',
+                  boxShadow: bundle === 'duo' ? '0 2px 8px rgba(0,0,0,0.1)' : 'none',
+                  transition: '0.2s',
+                }}
+              >
+                Duo ⭐
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Themes + picks */}
+        {!isMystery && (
+          <div
+            style={{
+              background: '#fff',
+              padding: 20,
+              borderRadius: 20,
+              border: '1px solid #eee',
+              boxShadow: '0 4px 15px rgba(0,0,0,0.02)',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 20,
+            }}
+          >
+            <div>
+              <div style={{ fontSize: 11, fontWeight: 800, color: '#aaa', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 12 }}>
+                1. Select Theme
+              </div>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 10 }}>
+                {availableThemes
+                  .filter((t) => !t.isExclusive)
+                  .map((t) => (
+                    <button
+                      key={t.id}
+                      onClick={() => handleThemeSelect(t)}
+                      style={{
+                        padding: '8px 14px',
+                        borderRadius: 999,
+                        fontSize: 12,
+                        fontWeight: 800,
+                        cursor: 'pointer',
+                        transition: 'all 0.2s',
+                        border: activeTheme.id === t.id ? '1px solid var(--gold-antique)' : '1px solid #eee',
+                        background: activeTheme.id === t.id ? '#fbf6ee' : '#fafafa',
+                        color: activeTheme.id === t.id ? 'var(--gold-deep)' : '#888',
+                      }}
+                    >
+                      {t.name}
+                    </button>
+                  ))}
+              </div>
+
+              {isPremium && (
+                <>
+                  <div
+                    style={{
+                      fontSize: 11,
+                      fontWeight: 800,
+                      color: 'var(--gold-deep)',
+                      marginTop: 16,
+                      marginBottom: 8,
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 6,
+                    }}
+                  >
+                    Premium Exclusive
+                    <span style={{ height: 1, background: 'linear-gradient(90deg, var(--gold-antique), transparent)', flex: 1, opacity: 0.3 }} />
+                  </div>
+                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                    {availableThemes
+                      .filter((t) => t.isExclusive)
+                      .map((t) => (
+                        <button
+                          key={t.id}
+                          onClick={() => handleThemeSelect(t)}
+                          style={{
+                            padding: '8px 14px',
+                            borderRadius: 999,
+                            fontSize: 12,
+                            fontWeight: 800,
+                            cursor: 'pointer',
+                            transition: 'all 0.2s',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 6,
+                            border: activeTheme.id === t.id ? '1px solid var(--gold-antique)' : '1px solid rgba(202,163,74,0.3)',
+                            background: activeTheme.id === t.id ? 'linear-gradient(135deg, var(--gold), var(--gold-antique))' : '#fcfaf5',
+                            color: activeTheme.id === t.id ? '#fff' : 'var(--gold-deep)',
+                            boxShadow: activeTheme.id === t.id ? '0 4px 12px rgba(202,163,74,0.3)' : 'none',
+                          }}
+                        >
+                          {t.name.split(' ')[0]}
+                          <span
+                            style={{
+                              fontSize: 9,
+                              background: activeTheme.id === t.id ? '#fff' : 'var(--gold)',
+                              color: activeTheme.id === t.id ? 'var(--gold-deep)' : '#fff',
+                              padding: '2px 6px',
+                              borderRadius: 6,
+                              fontWeight: 900,
+                            }}
+                          >
+                            Exclusive
+                          </span>
+                        </button>
+                      ))}
+                  </div>
+                </>
+              )}
+            </div>
+
+            <hr style={{ border: 0, height: 1, background: '#eee', margin: 0 }} />
+
+            <div>
+              <div
+                style={{
+                  fontSize: 11,
+                  fontWeight: 800,
+                  color: '#aaa',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.1em',
+                  marginBottom: 12,
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                }}
+              >
+                <span>2. Curated Options</span>
+                {!activeTheme.isExclusive ? (
+                  <div style={{ display: 'flex', background: '#eee', borderRadius: 999, padding: 2 }}>
+                    <button
+                      onClick={() => setShowPhrase(false)}
+                      style={{
+                        padding: '4px 10px',
+                        fontSize: 10,
+                        borderRadius: 999,
+                        border: 0,
+                        background: !showPhrase ? '#fff' : 'transparent',
+                        color: !showPhrase ? '#111' : '#888',
+                        fontWeight: 800,
+                        cursor: 'pointer',
+                      }}
+                    >
+                      Single
+                    </button>
+                    <button
+                      onClick={() => setShowPhrase(true)}
+                      style={{
+                        padding: '4px 10px',
+                        fontSize: 10,
+                        borderRadius: 999,
+                        border: 0,
+                        background: showPhrase ? '#fff' : 'transparent',
+                        color: showPhrase ? '#111' : '#888',
+                        fontWeight: 800,
+                        cursor: 'pointer',
+                      }}
+                    >
+                      Phrase
+                    </button>
+                  </div>
+                ) : (
+                  <span style={{ fontSize: 10, fontWeight: 800, color: 'var(--gold)', background: 'rgba(202,163,74,0.1)', padding: '4px 8px', borderRadius: 6 }}>
+                    Double-Character Only
+                  </span>
+                )}
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(80px, 1fr))', gap: 12 }}>
+                {activeTheme.options.map((opt) => {
+                  const effectiveUsePhrase = activeTheme.isExclusive ? true : showPhrase;
+                  const matchedPick = picked.find((p) => p.themeId === activeTheme.id && p.option.label === opt.label && p.usePhrase === effectiveUsePhrase);
+                  const isSelected = !!matchedPick;
+                  const displayScript = matchedPick ? matchedPick.script : 'traditional';
+                  const pickedFontCss = matchedPick ? pickToFontCss(matchedPick) : '"TC-A", serif';
+                  const displayStr =
+                    displayScript === 'traditional'
+                      ? effectiveUsePhrase
+                        ? opt.tradPhrase
+                        : opt.tradChar
+                      : effectiveUsePhrase
+                      ? opt.simpPhrase
+                      : opt.simpChar;
+                  const isSame = (effectiveUsePhrase ? opt.tradPhrase : opt.tradChar) === (effectiveUsePhrase ? opt.simpPhrase : opt.simpChar);
+
+                  return (
+                    <button
+                      key={`${activeTheme.id}-${opt.label}-${effectiveUsePhrase ? 'p' : 'c'}`}
+                      onClick={() => toggleChar(activeTheme, opt)}
+                      style={{
+                        padding: '16px 8px',
+                        borderRadius: 16,
+                        cursor: 'pointer',
+                        transition: 'all 0.2s',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        alignItems: 'center',
+                        gap: 8,
+                        position: 'relative',
+                        border: isSelected ? '2px solid var(--gold)' : '1px solid #eaeaea',
+                        background: isSelected ? '#fffdfa' : '#fff',
+                        boxShadow: isSelected ? '0 4px 12px rgba(202,163,74,0.15)' : 'none',
+                        transform: isSelected ? 'translateY(-2px)' : 'none',
+                      }}
+                    >
+                      {displayScript === 'simplified' && isSame && (
+                        <div style={{ position: 'absolute', top: 4, right: 4, fontSize: 8, background: '#eee', color: '#888', padding: '2px 6px', borderRadius: 4, fontWeight: 700 }}>
+                          Same
+                        </div>
+                      )}
+                      <div style={{ fontSize: effectiveUsePhrase ? 26 : 32, fontFamily: pickedFontCss, color: '#111', lineHeight: 1 }}>{displayStr}</div>
+                      <div style={{ fontSize: 11, fontWeight: 800, color: isSelected ? 'var(--gold-deep)' : '#888', textAlign: 'center' }}>{opt.label}</div>
+                    </button>
+                  );
+                })}
+              </div>
+
+              <div style={{ fontSize: 12, fontWeight: 600, color: '#666', marginTop: 16, background: '#fafafa', padding: '10px 14px', borderRadius: 12, border: '1px solid #eee' }}>
+                <strong style={{ color: 'var(--gold-deep)' }}>Meaning:</strong> {meaningText}
+              </div>
+
+              <div style={{ marginTop: 14, padding: '10px 12px', borderRadius: 12, border: '1px solid #eee', background: '#fff' }}>
+                <div style={{ fontSize: 10, fontWeight: 900, letterSpacing: '0.12em', color: '#aaa' }}>YOUR PICKS</div>
+
+                {picked.length === 0 ? (
+                  <div style={{ marginTop: 8, fontSize: 12, color: '#888' }}>No selection yet.</div>
+                ) : (
+                  <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    {picked.map((p, idx) => {
+                      const text = pickToText(p);
+                      return (
+                        <div
+                          key={p.id}
+                          style={{
+                            display: 'flex',
+                            flexDirection: 'column',
+                            gap: 8,
+                            padding: '8px 12px',
+                            borderRadius: 12,
+                            border: '1px solid rgba(202,163,74,0.35)',
+                            background: '#fff7e7',
+                          }}
+                        >
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                              <span style={{ fontWeight: 900, color: '#111', fontSize: 15, fontFamily: pickToFontCss(p) }}>{text}</span>
+                              {bundle === 'duo' && picked.length >= 2 && (
+                                <span style={{ display: 'inline-flex', gap: 6, marginLeft: 4 }}>
+                                  <button
+                                    type="button"
+                                    onClick={() => assignPickToArm('male', idx)}
+                                    style={{
+                                      border: armPickIndex.male === idx ? '1px solid rgba(0,0,0,0.28)' : '1px solid rgba(0,0,0,0.12)',
+                                      background: armPickIndex.male === idx ? '#111' : '#fff',
+                                      color: armPickIndex.male === idx ? '#fff' : '#666',
+                                      borderRadius: 999,
+                                      padding: '2px 6px',
+                                      cursor: 'pointer',
+                                      fontWeight: 900,
+                                      fontSize: 10,
+                                      lineHeight: 1,
+                                    }}
+                                    aria-label="Assign to Left"
+                                    title="Assign to Left Arm"
+                                  >
+                                    L
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => assignPickToArm('female', idx)}
+                                    style={{
+                                      border: armPickIndex.female === idx ? '1px solid rgba(0,0,0,0.28)' : '1px solid rgba(0,0,0,0.12)',
+                                      background: armPickIndex.female === idx ? '#111' : '#fff',
+                                      color: armPickIndex.female === idx ? '#fff' : '#666',
+                                      borderRadius: 999,
+                                      padding: '2px 6px',
+                                      cursor: 'pointer',
+                                      fontWeight: 900,
+                                      fontSize: 10,
+                                      lineHeight: 1,
+                                    }}
+                                    aria-label="Assign to Right"
+                                    title="Assign to Right Arm"
+                                  >
+                                    R
+                                  </button>
+                                </span>
+                              )}
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => removePick(p.id)}
+                              style={{
+                                border: '1px solid rgba(0,0,0,0.15)',
+                                background: '#fff',
+                                borderRadius: 999,
+                                padding: '2px 6px',
+                                cursor: 'pointer',
+                                fontWeight: 900,
+                                fontSize: 11,
+                                lineHeight: 1,
+                              }}
+                              aria-label="Remove"
+                              title="Remove"
+                            >
+                              ✕
+                            </button>
+                          </div>
+
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                            <span style={{ display: 'inline-flex', gap: 4 }}>
+                              <button
+                                type="button"
+                                title="Traditional Chinese"
+                                onClick={() => setPickScript(p.id, 'traditional')}
+                                style={{
+                                  border: '1px solid rgba(0,0,0,0.12)',
+                                  background: p.script === 'traditional' ? '#111' : '#fff',
+                                  color: p.script === 'traditional' ? '#fff' : '#666',
+                                  borderRadius: 999,
+                                  padding: '4px 8px',
+                                  fontWeight: 900,
+                                  fontSize: 10,
+                                  cursor: 'pointer',
+                                }}
+                              >
+                                TC
+                              </button>
+                              <button
+                                type="button"
+                                title="Simplified Chinese"
+                                disabled={!isPremium}
+                                onClick={() => setPickScript(p.id, 'simplified')}
+                                style={{
+                                  border: '1px solid rgba(0,0,0,0.12)',
+                                  background: p.script === 'simplified' ? '#111' : '#fff',
+                                  color: p.script === 'simplified' ? '#fff' : isPremium ? '#666' : '#ccc',
+                                  borderRadius: 999,
+                                  padding: '4px 8px',
+                                  fontWeight: 900,
+                                  fontSize: 10,
+                                  cursor: isPremium ? 'pointer' : 'not-allowed',
+                                }}
+                              >
+                                SC {!isPremium && '🔒'}
+                              </button>
+                            </span>
+
+                            <div style={{ width: 1, height: 16, background: 'rgba(0,0,0,0.1)' }} />
+
+                            <span style={{ display: 'inline-flex', gap: 4, alignItems: 'center' }}>
+                              {['A', 'B', 'C'].map((letter) => {
+                                const nextFontId = (p.script === 'traditional' ? 'trad-' : 'simp-') + letter;
+                                const active = p.fontId === nextFontId;
+                                return (
+                                  <button
+                                    key={`${p.id}-${letter}`}
+                                    type="button"
+                                    onClick={() => setPickFont(p.id, nextFontId)}
+                                    style={{
+                                      border: active ? '1px solid rgba(0,0,0,0.28)' : '1px solid rgba(0,0,0,0.12)',
+                                      background: active ? '#111' : '#fff',
+                                      color: active ? '#fff' : '#666',
+                                      borderRadius: 999,
+                                      padding: '4px 8px',
+                                      fontWeight: 900,
+                                      fontSize: 10,
+                                      lineHeight: 1,
+                                      cursor: 'pointer',
+                                    }}
+                                  >
+                                    Style {letter}
+                                  </button>
+                                );
+                              })}
+                            </span>
+                          </div>
+                        </div>
+                      );
+                    })}
+
+                    <span style={{ fontSize: 11, color: '#888', fontWeight: 800, textAlign: 'right' }}>
+                      ({picked.length}/{selectionNeeded || 1}) selected
+                    </span>
+
+                    {bundle === 'duo' && picked.length >= 2 && (
+                      <div style={{ marginTop: 4, fontSize: 11, color: 'rgba(0,0,0,0.55)', fontWeight: 700 }}>
+                        Tip: Use <b>L</b> / <b>R</b> buttons to place each design on the correct arm for the Live Preview.
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* ================= 右欄 ================= */}
+      <div className="previewCol" style={{ display: 'flex', flexDirection: 'column', gap: 24, position: 'sticky', top: 20 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <div className="previewHeader" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', position: 'relative', flexWrap: 'wrap' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                <span style={{ fontSize: 13, fontWeight: 800, color: '#111' }}>Live Preview</span>
+              </div>
+              <button
+                onClick={() => {
+                  setShowAdjust((v) => {
+                    const next = !v;
+                    if (next) {
+                      setTipMode('howto');
+                      setArmClicks(0);
+                      if (hideTimerRef.current) window.clearTimeout(hideTimerRef.current);
+                      hideTimerRef.current = null;
+                    } else {
+                      setTipMode('invite');
+                    }
+                    return next;
+                  });
+                }}
+                style={{ background: 'none', border: 'none', color: 'var(--gold)', fontSize: 12, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}
+              >
+                {showAdjust ? '✓ Done Adjust' : '⚙️ Advanced Adjust'}
+              </button>
+
+              {tipMode !== 'hidden' && (
+                <div
+                  className="tipPopup"
+                  style={{
+                    opacity: (tipMode === 'invite' && !showAdjust) || (tipMode === 'howto' && showAdjust) ? 1 : 0,
+                    pointerEvents: 'none',
+                    transition: 'opacity 0.8s ease',
+                    display: 'flex',
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    gap: 6,
+                    animation: 'gentleBounceHorizontal 2s infinite ease-in-out',
+                    zIndex: 20,
+                  }}
+                >
+                  <span style={{ fontSize: 11, fontWeight: 700, color: '#8a8a8a', whiteSpace: 'nowrap' }}>{tipText}</span>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M5 12h14M12 5l7 7-7 7" />
+                  </svg>
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div
+            className="previewGrid"
+            style={{
+              display: 'grid',
+              gridTemplateColumns: '1fr 1fr',
+              gap: 8,
+              borderRadius: 24,
+              overflow: 'hidden',
+              background: 'rgba(255,255,255,0.5)',
+              border: '1px solid rgba(0,0,0,0.05)',
+              position: 'relative',
+            }}
+          >
+            {/* 置中的 AI Mockup 提示標籤 */}
+            <div
+              style={{
+                position: 'absolute',
+                left: '50%',
+                top: '50%',
+                transform: 'translate(-50%, -50%)',
+                padding: '8px 16px',
+                borderRadius: 999,
+                background: 'rgba(255,255,255,0.85)',
+                border: '1px solid rgba(0,0,0,0.12)',
+                fontSize: 12,
+                fontWeight: 900,
+                color: 'rgba(0,0,0,0.65)',
+                backdropFilter: 'blur(8px)',
+                zIndex: 10,
+                pointerEvents: 'none',
+                textAlign: 'center',
+                lineHeight: 1.2,
+                whiteSpace: 'normal',
+              }}
+            >
+              AI Mockup • Results<br />
+              may vary
+            </div>
+
+            {/* Male */}
+            <div onClick={(e) => setByClick(e, 'male')} style={{ position: 'relative', aspectRatio: '3/4', overflow: 'hidden', cursor: showAdjust ? 'crosshair' : 'pointer' }}>
+              <Image
+                src="/images/demo1.png"
+                alt="Male"
+                fill
+                sizes="(max-width: 520px) 100vw, (max-width: 980px) 100vw, 50vw"
+                style={{ objectFit: 'cover', objectPosition: 'left center', pointerEvents: 'none' }}
+                priority
+              />
+              <div
+                style={{
+                  position: 'absolute',
+                  left: `${pos.male.x}%`,
+                  top: `${pos.male.y}%`,
+                  transform: `translate(-50%, -50%) rotate(${pos.male.rotate}deg) scale(${pos.male.scale})`,
+                  fontSize: 'clamp(26px, 6vw, 46px)',
+                  fontWeight: 900,
+                  color: inkColor,
+                  mixBlendMode: 'multiply',
+                  opacity: isMystery ? 0.3 : 0.85,
+                  filter: isMystery ? 'blur(2px)' : 'blur(0.3px)',
+                  textShadow: '0 1px 2px rgba(0,0,0,0.3)',
+                  pointerEvents: 'none',
+                  transition: 'all 0.2s ease-out',
+                  whiteSpace: layoutByArm.male === 'horizontal' ? 'nowrap' : 'normal',
+                  display: 'inline-block',
+                }}
+              >
+                {renderTattooTextForArm('male')}
+              </div>
+              {showAdjust && activeArm === 'male' && <div style={{ position: 'absolute', inset: 0, border: '3px solid rgba(202,163,74,0.6)', pointerEvents: 'none' }} />}
+            </div>
+
+            {/* Female */}
+            <div onClick={(e) => setByClick(e, 'female')} style={{ position: 'relative', aspectRatio: '3/4', overflow: 'hidden', cursor: showAdjust ? 'crosshair' : 'pointer' }}>
+              <Image
+                src="/images/demo2.png"
+                alt="Female"
+                fill
+                sizes="(max-width: 520px) 100vw, (max-width: 980px) 100vw, 50vw"
+                style={{ objectFit: 'cover', objectPosition: 'right center', pointerEvents: 'none' }}
+                priority
+              />
+              <div
+                style={{
+                  position: 'absolute',
+                  left: `${pos.female.x}%`,
+                  top: `${pos.female.y}%`,
+                  transform: `translate(-50%, -50%) rotate(${pos.female.rotate}deg) scale(${pos.female.scale})`,
+                  fontSize: 'clamp(26px, 6vw, 46px)',
+                  fontWeight: 900,
+                  color: inkColor,
+                  mixBlendMode: 'multiply',
+                  opacity: isMystery ? 0.3 : 0.85,
+                  filter: isMystery ? 'blur(2px)' : 'blur(0.3px)',
+                  textShadow: '0 1px 2px rgba(0,0,0,0.3)',
+                  pointerEvents: 'none',
+                  transition: 'all 0.2s ease-out',
+                  whiteSpace: layoutByArm.female === 'horizontal' ? 'nowrap' : 'normal',
+                  display: 'inline-block',
+                }}
+              >
+                {renderTattooTextForArm('female')}
+              </div>
+              {showAdjust && activeArm === 'female' && <div style={{ position: 'absolute', inset: 0, border: '3px solid rgba(202,163,74,0.6)', pointerEvents: 'none' }} />}
+            </div>
+          </div>
+
+          {/* Adjust Panel */}
+          {showAdjust && (
+            <div style={{ padding: 16, background: '#fff', borderRadius: 16, border: '1px solid #eee', display: 'flex', flexDirection: 'column', gap: 14, boxShadow: '0 4px 12px rgba(0,0,0,0.03)' }}>
+              <div style={{ display: 'flex', gap: 6 }}>
+                <button
+                  onClick={() => setActiveArm('male')}
+                  style={{ flex: 1, padding: '8px', fontSize: 11, fontWeight: 800, border: 0, borderRadius: 8, background: activeArm === 'male' ? '#111' : '#f5f5f7', color: activeArm === 'male' ? '#fff' : '#888', cursor: 'pointer' }}
+                >
+                  Left Arm (Male)
+                </button>
+                <button
+                  onClick={() => setActiveArm('female')}
+                  style={{ flex: 1, padding: '8px', fontSize: 11, fontWeight: 800, border: 0, borderRadius: 8, background: activeArm === 'female' ? '#111' : '#f5f5f7', color: activeArm === 'female' ? '#fff' : '#888', cursor: 'pointer' }}
+                >
+                  Right Arm (Female)
+                </button>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                <span style={{ fontSize: 11, fontWeight: 700, width: 40, color: '#555' }}>Size</span>
+                <input
+                  type="range"
+                  min="0.6"
+                  max="1.6"
+                  step="0.05"
+                  value={pos[activeArm].scale}
+                  onChange={(e) => setPos((v) => ({ ...v, [activeArm]: { ...v[activeArm], scale: Number(e.target.value) } }))}
+                  style={{ flex: 1, cursor: 'pointer' }}
+                />
+                <span style={{ fontSize: 11, width: 30, textAlign: 'right', color: '#888' }}>{Math.round(pos[activeArm].scale * 100)}%</span>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                <span style={{ fontSize: 11, fontWeight: 700, width: 40, color: '#555' }}>Angle</span>
+                <input
+                  type="range"
+                  min="-45"
+                  max="45"
+                  step="1"
+                  value={pos[activeArm].rotate}
+                  onChange={(e) => setPos((v) => ({ ...v, [activeArm]: { ...v[activeArm], rotate: Number(e.target.value) } }))}
+                  style={{ flex: 1, cursor: 'pointer' }}
+                />
+                <span style={{ fontSize: 11, width: 30, textAlign: 'right', color: '#888' }}>{pos[activeArm].rotate}°</span>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                <span style={{ fontSize: 11, fontWeight: 700, width: 40, color: '#555' }}>Layout</span>
+                <div style={{ flex: 1, display: 'flex', background: '#f5f5f7', borderRadius: 999, padding: 3 }}>
+                  <button
+                    type="button"
+                    onClick={() => setLayoutByArm((v) => ({ ...v, [activeArm]: 'horizontal' }))}
+                    style={{ flex: 1, padding: '8px 10px', borderRadius: 999, border: 0, cursor: 'pointer', fontWeight: 900, fontSize: 11, background: layoutByArm[activeArm] === 'horizontal' ? '#111' : 'transparent', color: layoutByArm[activeArm] === 'horizontal' ? '#fff' : '#777' }}
+                  >
+                    Horizontal
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setLayoutByArm((v) => ({ ...v, [activeArm]: 'vertical' }))}
+                    style={{ flex: 1, padding: '8px 10px', borderRadius: 999, border: 0, cursor: 'pointer', fontWeight: 900, fontSize: 11, background: layoutByArm[activeArm] === 'vertical' ? '#111' : 'transparent', color: layoutByArm[activeArm] === 'vertical' ? '#fff' : '#777' }}
+                  >
+                    Vertical
+                  </button>
+                </div>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12, borderTop: '1px solid #eee', paddingTop: 10 }}>
+                <span style={{ fontSize: 11, fontWeight: 700, width: 40, color: '#555' }}>UI Size</span>
+                <input type="range" min="0.85" max="1.25" step="0.05" value={fontScale} onChange={(e) => setFontScale(Number(e.target.value))} style={{ flex: 1, cursor: 'pointer' }} />
+                <span style={{ fontSize: 11, width: 30, textAlign: 'right', color: '#888' }}>{Math.round(fontScale * 100)}%</span>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* ================= 最終付款確認區 ================= */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          <div style={{ border: '1px solid rgba(0,0,0,0.08)', borderRadius: 16, padding: 16, background: '#ffffff', display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ fontSize: 13, fontWeight: 600, color: 'rgba(0,0,0,0.6)' }}>Selected Design:</span>
+              <div style={{ textAlign: 'right' }}>{renderSelectedDesignStyled()}</div>
+            </div>
+
+            {!isMystery && picked.length > 0 && (
+              <div style={{ marginTop: 2, fontSize: 10, fontWeight: 800, color: 'rgba(0,0,0,0.45)', textAlign: 'right', lineHeight: 1.4 }}>
+                {picked.map((p, i) => (
+                  <span key={p.id}>
+                    {pickToText(p)} • {pickToFontLabel(p)}
+                    {p.script === 'traditional' ? ' (TC)' : ' (SC)'}
+                    {i < picked.length - 1 ? ' | ' : ''}
+                  </span>
+                ))}
+              </div>
+            )}
+
+            <hr style={{ border: 0, height: 1, background: '#eee', margin: '6px 0 2px' }} />
+
+            {/* Files included boxes */}
+            {!isMystery && bundle === 'duo' && (
+              <div style={{ marginTop: 4, padding: '10px 12px', borderRadius: 12, border: '1px solid #eee', background: '#fbf6ee' }}>
+                <div style={{ fontSize: 10, fontWeight: 900, letterSpacing: '0.12em', color: '#888' }}>FILES INCLUDED</div>
+                {picked.length < 2 ? (
+                  <div style={{ marginTop: 6, fontSize: 12, color: '#777', fontWeight: 700 }}>
+                    Select <span style={{ color: '#111' }}>2</span> designs to receive <span style={{ color: '#111' }}>2 separate files</span>.
+                  </div>
+                ) : (
+                  <>
+                    <div style={{ marginTop: 6, fontSize: 12, color: '#111', fontWeight: 900 }}>
+                      You will receive <span style={{ color: 'var(--gold-deep)' }}>2 separate stencil files</span>:
+                    </div>
+                    <ul style={{ marginTop: 6, marginBottom: 0, paddingLeft: 18, color: '#111', fontSize: 12, fontWeight: 800, lineHeight: 1.6 }}>
+                      <li>
+                        File 1: {activeCharsArray[0]}
+                        <span style={{ marginLeft: 8, fontSize: 10, fontWeight: 900, color: 'rgba(0,0,0,0.55)' }}>• {picked[0] ? pickToFontLabel(picked[0]) : ''}</span>
+                      </li>
+                      <li>
+                        File 2: {activeCharsArray[1]}
+                        <span style={{ marginLeft: 8, fontSize: 10, fontWeight: 900, color: 'rgba(0,0,0,0.55)' }}>• {picked[1] ? pickToFontLabel(picked[1]) : ''}</span>
+                      </li>
+                    </ul>
+                  </>
+                )}
+              </div>
+            )}
+
+            {!isMystery && bundle === 'single' && picked.length === 1 && (
+              <div style={{ marginTop: 4, padding: '10px 12px', borderRadius: 12, border: '1px solid #eee', background: '#fbf6ee' }}>
+                <div style={{ fontSize: 10, fontWeight: 900, letterSpacing: '0.12em', color: '#888' }}>FILE INCLUDED</div>
+                <div style={{ marginTop: 6, fontSize: 12, color: '#111', fontWeight: 900 }}>
+                  <span style={{ color: 'var(--gold-deep)' }}>1 stencil file</span>:
+                </div>
+                <ul style={{ marginTop: 6, marginBottom: 0, paddingLeft: 18, color: '#111', fontSize: 12, fontWeight: 800, lineHeight: 1.6 }}>
+                  <li>
+                    {activeCharsArray[0]}
+                    <span style={{ marginLeft: 8, fontSize: 10, fontWeight: 900, color: 'rgba(0,0,0,0.55)' }}>• {picked[0] ? pickToFontLabel(picked[0]) : ''}</span>
+                  </li>
+                </ul>
+              </div>
+            )}
+
+            {isMystery && (
+              <div style={{ marginTop: 4, padding: '10px 12px', borderRadius: 12, border: '1px solid #eee', background: '#fbf6ee' }}>
+                <div style={{ fontSize: 10, fontWeight: 900, letterSpacing: '0.12em', color: '#888' }}>MYSTERY DELIVERY</div>
+                <div style={{ marginTop: 6, fontSize: 12, color: '#111', fontWeight: 800, lineHeight: 1.5 }}>
+                  You will receive <span style={{ color: 'var(--gold-deep)', fontWeight: 900 }}>1 curated design</span> revealed after payment.
+                </div>
+              </div>
+            )}
+
+            <hr style={{ border: 0, height: 1, background: '#eee', margin: '2px 0' }} />
+
+            <div style={{ display: 'flex', flexDirection: 'column' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ fontSize: 14, fontWeight: 800, color: '#111' }}>Total:</span>
+                <span style={{ fontSize: 18, fontWeight: 900, color: '#caa34a' }}>USD${displayPrice}</span>
+              </div>
+
+              <div style={{ fontSize: 10, color: 'rgba(0,0,0,0.45)', marginTop: 4, textAlign: 'right' }}>
+                Final price shown in USD.
+              </div>
+
+              {canDuo && bundle === 'duo' && saveAmt > 0 && (
+                <div style={{ fontSize: 10, color: '#e24a4a', fontWeight: 900, marginTop: 4, textAlign: 'right' }}>
+                  You saved ${saveAmt} with Duo.
+                </div>
+              )}
+
+              <div style={{ fontSize: 10, color: 'rgba(0,0,0,0.45)', marginTop: 6, textAlign: 'right' }}>
+                Secure encrypted checkout (Stripe). Payment details are entered on the next page.
+              </div>
+            </div>
+          </div>
+
+          <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: selectionValid ? 'pointer' : 'not-allowed', padding: '0 4px', opacity: selectionValid ? 1 : 0.7 }}>
+            <input
+              type="checkbox"
+              checked={confirmed}
+              onChange={(e) => setConfirmed(e.target.checked)}
+              style={{ marginTop: 2, width: 16, height: 16, cursor: selectionValid ? 'pointer' : 'not-allowed', accentColor: '#caa34a' }}
+              disabled={!selectionValid || isRedirecting}
+            />
+            <span style={{ fontSize: 12, fontWeight: 700, color: 'rgba(0,0,0,0.7)', lineHeight: 1.4 }}>
+              {confirmText}
+            </span>
+          </label>
+
+          <button
+            disabled={!canProceed}
+            onClick={redirectToStripe}
+            style={{
+              width: '100%',
+              padding: 22,
+              borderRadius: 20,
+              background: 'linear-gradient(180deg, #caa34a, #b08d35)',
+              color: '#fff',
+              fontWeight: 950,
+              fontSize: 19,
+              letterSpacing: '0.3px',
+              border: 0,
+              cursor: canProceed ? 'pointer' : 'not-allowed',
+              boxShadow: canProceed ? '0 10px 25px rgba(176,141,53,0.4)' : 'none',
+              opacity: canProceed ? 1 : 0.6,
+              transition: 'all 0.2s',
+            }}
+          >
+            {isRedirecting ? 'Redirecting to Stripe…' : `Pay USD$${displayPrice} securely →`}
+          </button>
+
+          <div style={{ fontSize: 11, lineHeight: 1.5, color: 'rgba(0,0,0,0.55)', textAlign: 'center', maxWidth: 520, margin: '14px auto 0' }}>
+            <div>No subscription. One-time purchase.</div>
+            <div>Instant download after successful payment.</div>
+            <div style={{ color: '#e24a4a', fontWeight: 800 }}>
+              Please enter a valid email at checkout
+              <br className="mobileBreak" />
+              (delivery is email-based).
+            </div>
+            <div style={{ marginTop: 6, fontWeight: 700, color: 'rgba(0,0,0,0.65)' }}>
+              Digital sales are final.
+              <br className="mobileBreak" />
+              Orders cannot be changed after checkout.
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
