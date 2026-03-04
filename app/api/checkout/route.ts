@@ -60,8 +60,8 @@ export async function POST(req: Request) {
     const key = process.env.STRIPE_SECRET_KEY;
     if (!key) return NextResponse.json({ error: "Missing STRIPE_SECRET_KEY" }, { status: 400 });
 
-    // ✅ A方案重點：用 Checkout Session 之後用 session_id 去 Stripe 取 email
-    const stripe = new Stripe(key) ;
+    // ✅ 建議加 apiVersion，避免 Stripe SDK 將來行為變動
+    const stripe = new Stripe(key);
 
     const body = (await req.json().catch(() => ({}))) as any;
 
@@ -79,18 +79,21 @@ export async function POST(req: Request) {
     const lang = safeStr(body?.lang);
     const style = safeStr(body?.style);
 
+    // ✅ NEW：type（single / phrase）— 你檔名依賴呢個
+    const type = safeStr(body?.type || "single").toLowerCase();
+
     // Duo 第二組資料
     const theme2 = finalBundle === "duo" ? safeStr(body?.theme2) : "";
     const label2 = finalBundle === "duo" ? safeStr(body?.label2) : "";
     const lang2 = finalBundle === "duo" ? safeStr(body?.lang2) : "";
     const style2 = finalBundle === "duo" ? safeStr(body?.style2) : "";
 
+    // ✅ NEW：type2（single / phrase）
+    const type2 = finalBundle === "duo" ? safeStr(body?.type2 || "single").toLowerCase() : "";
+
     const baseUrl = getBaseUrl(req);
 
-    // ✅ 改呢行：success_url 只傳 session_id（Stripe 會自動塞入）
-    //    之後你喺 /success 或 /download 用 session_id call 你自己 API -> retrieve session -> customer_details.email
     const successUrl = `${baseUrl}/success?plan=${encodeURIComponent(plan)}&session_id={CHECKOUT_SESSION_ID}`;
-
     const cancelUrl = `${baseUrl}/customize?plan=${encodeURIComponent(plan)}&canceled=1`;
 
     // 計算價格
@@ -122,17 +125,18 @@ export async function POST(req: Request) {
     // 建立 Stripe Session
     const session = await stripe.checkout.sessions.create({
       mode: "payment",
-      // payment_method_types 其實可省略（Stripe 會自動），但保留都OK
       payment_method_types: ["card"],
       line_items: [priceData],
-
       success_url: successUrl,
       cancel_url: cancelUrl,
 
-      // ✅ 你原本 metadata 保留：用嚟 download 對應檔案
       metadata: {
         plan,
         bundle: finalBundle,
+
+        // ✅ 重要：把 type/type2 存落去，download page 先會正確加 "_phrase"
+        type: plan === "mystery" ? "single" : type,
+        type2: plan === "mystery" ? "" : type2,
 
         theme: plan === "mystery" ? "mystery" : theme,
         label: plan === "mystery" ? "mystery" : label,
