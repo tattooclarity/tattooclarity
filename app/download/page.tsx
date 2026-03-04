@@ -41,7 +41,13 @@ function normalizePlan(input: any): Plan {
 
 function planLabel(plan: Plan, isDuo: boolean) {
   const base =
-    plan === "basic" ? "Basic" : plan === "standard" ? "Standard" : plan === "premium" ? "Premium" : "Mystery";
+    plan === "basic"
+      ? "Basic"
+      : plan === "standard"
+      ? "Standard"
+      : plan === "premium"
+      ? "Premium"
+      : "Mystery";
   return isDuo ? `${base} (DUO)` : base;
 }
 
@@ -224,7 +230,7 @@ function DownloadContent() {
     const pngHref1 = `/api/download?plan=${encodeURIComponent(downloadPlan)}&file=${encodeURIComponent(filePath1)}`;
     list.push({ key: "png1", label: pngLabel1, href: pngHref1, className: "btnGold" });
 
-    // ✅ DUO 第2份
+    // ✅ DUO 第2份 PNG
     if (isDuo && label2) {
       const baseName2 = `${label2}${isPhrase2 ? "_phrase" : ""}_${lang2}_${style2}`;
       const filePath2 = `${theme2}/${baseName2}.png`;
@@ -237,27 +243,29 @@ function DownloadContent() {
       list.push({ key: "png2", label: pngLabel2, href: pngHref2, className: "btnGold" });
     }
 
-    // ✅ Premium SVG（同樣可做 DUO，但你而家主要係 Standard DUO，所以先保留單份 SVG 邏輯）
+    // ✅ Premium SVG（✅ 現在支援 DUO：Set 1 + Set 2）
     if (plan === "premium") {
       const svgPath1 = `${theme}/${baseName1}.svg`;
+      const svgLabel1 = isDuo ? "Download Vector SVG (Set 1)" : "Download Vector SVG";
+
       list.push({
         key: "svg1",
-        label: "Download Vector SVG",
+        label: svgLabel1,
         href: `/api/download?plan=premium_svg&file=${encodeURIComponent(svgPath1)}`,
         className: "btnOutline",
       });
 
-      // 如果你之後要 Premium DUO，再打開呢段：
-      // if (isDuo && label2) {
-      //   const baseName2 = `${label2}${isPhrase2 ? "_phrase" : ""}_${lang2}_${style2}`;
-      //   const svgPath2 = `${theme2}/${baseName2}.svg`;
-      //   list.push({
-      //     key: "svg2",
-      //     label: "Download Vector SVG (Set 2)",
-      //     href: `/api/download?plan=premium_svg&file=${encodeURIComponent(svgPath2)}`,
-      //     className: "btnOutline",
-      //   });
-      // }
+      // ✅ 解開：Premium DUO 第二個 SVG
+      if (isDuo && label2) {
+        const baseName2 = `${label2}${isPhrase2 ? "_phrase" : ""}_${lang2}_${style2}`;
+        const svgPath2 = `${theme2}/${baseName2}.svg`;
+        list.push({
+          key: "svg2",
+          label: "Download Vector SVG (Set 2)",
+          href: `/api/download?plan=premium_svg&file=${encodeURIComponent(svgPath2)}`,
+          className: "btnOutline",
+        });
+      }
     }
 
     return list;
