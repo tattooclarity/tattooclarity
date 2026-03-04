@@ -207,6 +207,40 @@ const PACKAGE_DATA: Record<
 const ARM_CLICKS_TO_HIDE = 3;
 const HIDE_AFTER_MS = 5000;
 
+// ✅ FIXED 1: Safer slugify function (use hyphens, strip others)
+// e.g. "True Qi" -> "true-qi", "Prime" -> "prime"
+const toSlug = (s: string) =>
+  String(s || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-') // Replace spaces/symbols with hyphen
+    .replace(/^-+|-+$/g, '');    // Remove leading/trailing hyphens
+
+// ✅ FIXED 2: Granular metadata extraction
+const pickToMeta = (p: PickChoice) => {
+  const theme = p.themeId;                 // e.g. "dragon"
+  const label = toSlug(p.option.label);    // e.g. "flying"
+  const lang = p.script === 'simplified' ? 'sc' : 'tc';
+  const letter = (p.fontId.match(/-(A|B|C)$/i)?.[1] || 'A').toUpperCase();
+  
+  // Backend often prefers just "A" or "B", but frontend might use "SA"/"SB".
+  // We send BOTH to be 100% safe.
+  const style = `S${letter}`;   // Legacy support: "SA", "SB"
+  const styleLetter = letter;   // ✅ Backend safe: "A", "B", "C"
+  
+  const type = p.usePhrase ? 'phrase' : 'single';
+  
+  return { 
+    theme, 
+    label, 
+    lang, 
+    style, 
+    styleLetter, // New field
+    type,
+    fontId: p.fontId // Also useful
+  };
+};
+
 function CustomizeContent() {
   const router = useRouter();
   const sp = useSearchParams();
@@ -343,7 +377,7 @@ function CustomizeContent() {
             script: 'traditional',
             usePhrase: false,
             fontId: 'trad-A',
-          },
+            },
         ];
       }
       return filtered;
@@ -550,23 +584,46 @@ function CustomizeContent() {
   const selectionValid = isMystery ? true : picked.length === selectionNeeded;
   const canProceed = confirmed && selectionValid && !isRedirecting;
 
+  // ✅ FIX: Build payload with granular metadata (label, lang, style, styleLetter, fontId, type)
   const buildCheckoutPayload = () => {
+    const p1 = picked[0];
+    const p2 = picked[1];
+
+    const m1 = isMystery ? null : (p1 ? pickToMeta(p1) : null);
+    const m2 = isMystery ? null : (p2 ? pickToMeta(p2) : null);
+
+    // Old generic params fallback (optional, useful for debug)
     const qtyParam = isMystery ? 1 : picked.length;
-
-    const themeParamForCheckout = isMystery ? 'mystery' : Array.from(new Set(picked.map((p) => p.themeId))).join(',');
-    const scriptParamForCheckout = isMystery ? 'mystery' : picked.map((p) => p.script).join(',');
-    const fontsParam = isMystery ? 'mystery' : picked.map((p) => p.fontId).join(',');
     const layoutParam = `${layoutByArm.male},${layoutByArm.female}`;
-
     const charParam = isMystery ? 'mystery' : activeCharsStringForDisplay;
+
+    // ✅ FIXED 3: Robust check for Duo validity before sending second set of metadata
+    const duoOk = bundle === 'duo' && picked.length >= 2;
 
     return {
       plan: currentPlan,
       bundle,
       qty: qtyParam,
-      theme: themeParamForCheckout,
-      script: scriptParamForCheckout,
-      fonts: fontsParam,
+      
+      // ✅ 單買 / DUO 第一份 (Core Metadata)
+      theme: isMystery ? 'mystery' : (m1?.theme || ''),
+      label: isMystery ? 'mystery' : (m1?.label || ''),
+      lang:  isMystery ? 'mystery' : (m1?.lang  || ''),
+      style: isMystery ? 'mystery' : (m1?.style || ''),           // SA, SB
+      styleLetter: isMystery ? 'mystery' : (m1?.styleLetter || ''), // A, B, C (Backend preferred)
+      fontId: isMystery ? 'mystery' : (m1?.fontId || ''),         // raw fontId
+      type:  isMystery ? 'mystery' : (m1?.type  || ''),
+
+      // ✅ DUO 第二份 (Only if bundle='duo' AND we have 2 picks)
+      theme2: duoOk ? (m2?.theme || '') : '',
+      label2: duoOk ? (m2?.label || '') : '',
+      lang2:  duoOk ? (m2?.lang  || '') : '',
+      style2: duoOk ? (m2?.style || '') : '',
+      styleLetter2: duoOk ? (m2?.styleLetter || '') : '',
+      fontId2: duoOk ? (m2?.fontId || '') : '',
+      type2:  duoOk ? (m2?.type  || '') : '',
+
+      // Legacy/Visual params
       layout: layoutParam,
       char: charParam,
       priceShown: displayPrice,
@@ -660,7 +717,6 @@ function CustomizeContent() {
       ? 'rgba(20,20,20,0.75)'
       : 'rgba(30,30,30,0.60)';
 
-  // ✅ 更強版本：Plan 卡片顯示 Duo 價格（動態，不 hardcode）
   const standardUnit = PACKAGE_DATA.standard.price;
   const standardDuo = PACKAGE_DATA.standard.duoPrice || standardUnit * 2;
   const standardSave = standardUnit * 2 - standardDuo;
@@ -671,12 +727,14 @@ function CustomizeContent() {
 
   const duoActive = canDuo && bundle === 'duo';
 
-  // ✅ 更強版本：確認 checkbox 文案按 plan 變化
   const confirmText = isMystery
     ? 'I understand this is a curated surprise. The final character will be revealed after payment, and orders cannot be changed.'
     : selectionValid
     ? 'I confirm the character(s), script(s), font style(s), and total shown above are correct.'
     : `Please select ${selectionNeeded} design${selectionNeeded === 1 ? '' : 's'} to continue.`;
+
+  // ✅ FIXED 4: Deduplicate meanings for cleaner display
+  const meaningText = Array.from(new Set(picked.map((p) => p.option.meaning))).join(' + ');
 
   return (
     <div
@@ -712,6 +770,10 @@ function CustomizeContent() {
             transform: translateX(4px);
           }
         }
+
+        /* ✅ FIXED 5: Added missing mobileBreak class */
+        .mobileBreak { display: none; }
+        @media (max-width: 520px) { .mobileBreak { display: block; } }
 
         @font-face {
           font-family: 'TC-A';
@@ -1312,7 +1374,7 @@ function CustomizeContent() {
               </div>
 
               <div style={{ fontSize: 12, fontWeight: 600, color: '#666', marginTop: 16, background: '#fafafa', padding: '10px 14px', borderRadius: 12, border: '1px solid #eee' }}>
-                <strong style={{ color: 'var(--gold-deep)' }}>Meaning:</strong> {picked.map((p) => p.option.meaning).join('  +  ')}
+                <strong style={{ color: 'var(--gold-deep)' }}>Meaning:</strong> {meaningText}
               </div>
 
               <div style={{ marginTop: 14, padding: '10px 12px', borderRadius: 12, border: '1px solid #eee', background: '#fff' }}>
@@ -1734,7 +1796,7 @@ function CustomizeContent() {
                   <span key={p.id}>
                     {pickToText(p)} • {pickToFontLabel(p)}
                     {p.script === 'traditional' ? ' (TC)' : ' (SC)'}
-                    {i < picked.length - 1 ? '  |  ' : ''}
+                    {i < picked.length - 1 ? ' | ' : ''}
                   </span>
                 ))}
               </div>
@@ -1832,6 +1894,7 @@ function CustomizeContent() {
             </span>
           </label>
 
+          {/* ✅ FIXED 6: Button Text - Method 1 */}
           <button
             disabled={!canProceed}
             onClick={redirectToStripe}
@@ -1851,22 +1914,22 @@ function CustomizeContent() {
               transition: 'all 0.2s',
             }}
           >
-            {isRedirecting ? 'Redirecting to Stripe…' : 'Proceed to Secure Checkout →'}
+            {isRedirecting ? 'Redirecting to Stripe…' : `Pay USD$${displayPrice} securely →`}
           </button>
 
           <div style={{ fontSize: 11, lineHeight: 1.5, color: 'rgba(0,0,0,0.55)', textAlign: 'center', maxWidth: 520, margin: '14px auto 0' }}>
             <div>No subscription. One-time purchase.</div>
             <div>Instant download after successful payment.</div>
             <div style={{ color: '#e24a4a', fontWeight: 800 }}>
-  Please enter a valid email at checkout
-  <br className="mobileBreak" />
-  (delivery is email-based).
-</div>
+              Please enter a valid email at checkout
+              <br className="mobileBreak" />
+              (delivery is email-based).
+            </div>
             <div style={{ marginTop: 6, fontWeight: 700, color: 'rgba(0,0,0,0.65)' }}>
-  Digital sales are final.
-  <br className="mobileBreak" />
-  Orders cannot be changed after checkout.
-</div>
+              Digital sales are final.
+              <br className="mobileBreak" />
+              Orders cannot be changed after checkout.
+            </div>
           </div>
         </div>
       </div>
@@ -1885,4 +1948,3 @@ export default function Page() {
     </div>
   );
 }
-

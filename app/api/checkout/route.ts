@@ -41,6 +41,12 @@ function getBaseUrl(req: Request) {
   return `${proto}://${host}`;
 }
 
+function safeStr(v: any, maxLen = 180) {
+  const s = typeof v === "string" ? v : "";
+  // Stripe metadata value limit is 500 chars; we keep it safely shorter.
+  return s.length > maxLen ? s.slice(0, maxLen) : s;
+}
+
 export async function POST(req: Request) {
   try {
     const key = process.env.STRIPE_SECRET_KEY;
@@ -52,13 +58,14 @@ export async function POST(req: Request) {
     }
 
     const stripe = new Stripe(key, {
-      
+      // ✅ 如果你嘅 Stripe SDK 版本需要 apiVersion，可以保留；唔需要都唔會壞
+      // apiVersion: "2024-06-20",
     });
 
     const body = (await req.json().catch(() => ({}))) as any;
 
-    const planRaw = ((body?.plan as string) || "standard").toLowerCase();
-    const bundleRaw = ((body?.bundle as string) || "single").toLowerCase();
+    const planRaw = safeStr(body?.plan || "standard").toLowerCase();
+    const bundleRaw = safeStr(body?.bundle || "single").toLowerCase();
 
     const plan: Plan = (["basic", "standard", "premium", "mystery"].includes(planRaw)
       ? planRaw
@@ -68,15 +75,39 @@ export async function POST(req: Request) {
 
     // ✅ 只允許 Standard/Premium 用 DUO；其他一律降回 single
     const duoAllowed = bundle === "duo" && (plan === "standard" || plan === "premium");
-    const finalBundle: Bundle = duoAllowed ? "duo" : "single";
 
-    // ✅ 重要：Download 會靠 metadata 決定要派咩檔
-    // 你 Customize page 送咩過嚟，就儘量存低（無就留空字串）
-    const theme = typeof body?.theme === "string" ? body.theme : ""; // e.g. "dragon"
-    const label = typeof body?.label === "string" ? body.label : ""; // e.g. "flying"
-    const lang = typeof body?.lang === "string" ? body.lang : ""; // "tc" | "sc"
-    const style = typeof body?.style === "string" ? body.style : ""; // "SA" | "SB" | "SC"
-    const type = typeof body?.type === "string" ? body.type : ""; // "single" | "phrase"
+    // ✅ 再加一道：DUO 必須真係有第二份 metadata，否則降回 single（避免前端/用戶亂傳）
+    const hasSecondPick =
+      typeof body?.theme2 === "string" &&
+      typeof body?.label2 === "string" &&
+      String(body.theme2).trim() !== "" &&
+      String(body.label2).trim() !== "";
+
+    const finalBundle: Bundle = duoAllowed && hasSecondPick ? "duo" : "single";
+
+    // ✅ 你 Customize page 送咩過嚟，就儘量存低（無就留空）
+    // 第一份
+    const theme = safeStr(body?.theme);          // "dragon"
+    const label = safeStr(body?.label);          // "flying"
+    const lang = safeStr(body?.lang);            // "tc" | "sc"
+    const style = safeStr(body?.style);          // "SA" | "SB"（legacy）
+    const styleLetter = safeStr(body?.styleLetter); // "A" | "B" | "C"（backend preferred）
+    const fontId = safeStr(body?.fontId);        // "trad-A" / "simp-C"
+    const type = safeStr(body?.type);            // "single" | "phrase"
+
+    // 第二份（DUO）
+    const theme2 = finalBundle === "duo" ? safeStr(body?.theme2) : "";
+    const label2 = finalBundle === "duo" ? safeStr(body?.label2) : "";
+    const lang2 = finalBundle === "duo" ? safeStr(body?.lang2) : "";
+    const style2 = finalBundle === "duo" ? safeStr(body?.style2) : "";
+    const styleLetter2 = finalBundle === "duo" ? safeStr(body?.styleLetter2) : "";
+    const fontId2 = finalBundle === "duo" ? safeStr(body?.fontId2) : "";
+    const type2 = finalBundle === "duo" ? safeStr(body?.type2) : "";
+
+    // 其他 useful（可選，但好建議存，方便 debug/派檔）
+    const layout = safeStr(body?.layout, 60);    // "horizontal,vertical"
+    const char = safeStr(body?.char, 260);       // display string
+    const priceShown = safeStr(String(body?.priceShown ?? ""), 30);
 
     const baseUrl = getBaseUrl(req);
 
@@ -85,9 +116,19 @@ export async function POST(req: Request) {
       `&bundle=${encodeURIComponent(finalBundle)}` +
       `&order_id={CHECKOUT_SESSION_ID}`;
 
-    const cancelUrl = `${baseUrl}/customize?plan=${encodeURIComponent(plan)}&canceled=1`;
+    const cancelUrl =
+      `${baseUrl}/customize?plan=${encodeURIComponent(plan)}` +
+      `&canceled=1`;
 
-    const lineItem =
+    // ✅ Line item
+    if (finalBundle === "duo" && !DUO_USD[plan]) {
+      return NextResponse.json(
+        { error: "DUO price not configured for this plan." },
+        { status: 400 }
+      );
+    }
+
+    const lineItem: Stripe.Checkout.SessionCreateParams.LineItem =
       finalBundle === "single"
         ? { price: PRICE_ID[plan], quantity: 1 }
         : {
@@ -108,36 +149,68 @@ export async function POST(req: Request) {
             },
           };
 
-    if (finalBundle === "duo" && !DUO_USD[plan]) {
+    // ✅ guard unit_amount（避免配置錯誤變 0）
+    if (
+      finalBundle === "duo" &&
+      (lineItem as any)?.price_data?.unit_amount &&
+      (lineItem as any).price_data.unit_amount <= 0
+    ) {
       return NextResponse.json(
-        { error: "DUO price not configured for this plan." },
+        { error: "Invalid DUO unit_amount. Check DUO_USD config." },
         { status: 400 }
       );
     }
+
+    // ✅ Mystery：你可以選擇清空非必要 metadata（避免誤派）
+    const isMystery = plan === "mystery";
 
     const session = await stripe.checkout.sessions.create({
       mode: "payment",
       payment_method_types: ["card"],
       customer_creation: "if_required",
-      line_items: [lineItem as Stripe.Checkout.SessionCreateParams.LineItem],
+      line_items: [lineItem],
       success_url: successUrl,
       cancel_url: cancelUrl,
 
-      // ✅ Download / Verify 會用呢堆
+      // ✅ Download / Verify 會用呢堆（完整保存你前端送嘅 granular metadata）
       metadata: {
         plan,
         bundle: finalBundle,
-        theme,
-        label,
-        lang,
-        style,
-        type,
+
+        // First pick
+        theme: isMystery ? "mystery" : theme,
+        label: isMystery ? "mystery" : label,
+        lang: isMystery ? "mystery" : lang,
+        style: isMystery ? "mystery" : style,
+        styleLetter: isMystery ? "mystery" : styleLetter,
+        fontId: isMystery ? "mystery" : fontId,
+        type: isMystery ? "mystery" : type,
+
+        // Second pick (duo only)
+        theme2: finalBundle === "duo" && !isMystery ? theme2 : "",
+        label2: finalBundle === "duo" && !isMystery ? label2 : "",
+        lang2: finalBundle === "duo" && !isMystery ? lang2 : "",
+        style2: finalBundle === "duo" && !isMystery ? style2 : "",
+        styleLetter2: finalBundle === "duo" && !isMystery ? styleLetter2 : "",
+        fontId2: finalBundle === "duo" && !isMystery ? fontId2 : "",
+        type2: finalBundle === "duo" && !isMystery ? type2 : "",
+
+        // Optional debug/helpful fields
+        layout,
+        char,
+        priceShown,
       },
     });
 
-    return NextResponse.json({ url: session.url, id: session.id }, { status: 200 });
+    return NextResponse.json(
+      { url: session.url, id: session.id },
+      { status: 200 }
+    );
   } catch (err: any) {
     console.error("Checkout error:", err);
-    return NextResponse.json({ error: err?.message || "Unknown error" }, { status: 500 });
+    return NextResponse.json(
+      { error: err?.message || "Unknown error" },
+      { status: 500 }
+    );
   }
 }
