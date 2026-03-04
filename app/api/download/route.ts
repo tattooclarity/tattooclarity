@@ -1,149 +1,100 @@
 // app/api/download/route.ts
-import { NextRequest, NextResponse } from "next/server";
-import fs from "fs";
+import { NextResponse } from "next/server";
 import path from "path";
+import fs from "fs/promises";
 
 export const runtime = "nodejs";
 
-const PLAN_TO_FOLDER: Record<string, string> = {
-  basic: "basic_png",
-  standard: "standard_png",
-  premium: "premium_png",
-  
-  // 允許前端直接傳 folder key
-  basic_png: "basic_png",
-  standard_png: "standard_png",
-  premium_png: "premium_png",
-  premium_svg: "premium_svg",
+function safeJoin(base: string, target: string) {
+  const p = path.normalize(path.join(base, target));
+  if (!p.startsWith(base)) throw new Error("Invalid file path");
+  return p;
+}
 
-  mystery: "standard_png",
-};
-
-const ALLOWED_FOLDERS = new Set(Object.values(PLAN_TO_FOLDER));
-const ALLOWED_EXT = new Set([".png", ".svg", ".zip"]);
-
-function contentTypeByExt(fileName: string) {
-  const ext = path.extname(fileName).toLowerCase();
-  if (ext === ".svg") return "image/svg+xml; charset=utf-8";
+function contentTypeByExt(filePath: string) {
+  const ext = path.extname(filePath).toLowerCase();
   if (ext === ".png") return "image/png";
+  if (ext === ".svg") return "image/svg+xml";
   if (ext === ".zip") return "application/zip";
   return "application/octet-stream";
 }
 
-export async function GET(req: NextRequest) {
+export async function GET(req: Request) {
   try {
-    const { searchParams } = new URL(req.url);
-    const plan = (searchParams.get("plan") || "").trim();
-    let file = (searchParams.get("file") || "").trim();
+    const url = new URL(req.url);
+    const plan = (url.searchParams.get("plan") || "").toLowerCase();
+    const file = url.searchParams.get("file") || "";
 
-    if (!plan || !file) {
-      return NextResponse.json(
-        { error: "Missing parameters: plan or file" },
-        { status: 400 }
-      );
+    const ROOT = path.join(process.cwd(), "storage", "designs");
+
+    // ✅ 你的 plan->folder 映射（按你現有結構）
+    const PLAN_DIR: Record<string, string> = {
+      basic: "basic_png",
+      standard: "standard_png",
+      premium_png: "premium_png",
+      premium_svg: "premium_svg",
+      // ✅ 重要：mystery 其實係用 standard_png
+      mystery: "standard_png",
+    };
+
+    const folder = PLAN_DIR[plan];
+    if (!folder) {
+      return NextResponse.json({ error: "Invalid plan" }, { status: 400 });
     }
 
-    // ✅ [FIX] 自動移除開頭的斜線 (避免 theme 為空時變成 /filename.svg 導致報錯)
-    while (file.startsWith("/")) {
-      file = file.substring(1);
-    }
+    // ✅ 1) MYSTERY：隨機揀 standard_png/mystery 內任何 .png
+    if (plan === "mystery") {
+      const mysteryDir = path.join(ROOT, "standard_png", "mystery");
+      const all = await fs.readdir(mysteryDir);
 
-    // ✅ 安全檢查：防止 ../ 或 Windows 反斜線
-    if (file.includes("..") || file.includes("\\")) {
-      return NextResponse.json({ error: "Invalid file path security check" }, { status: 400 });
-    }
-
-    const ext = path.extname(file).toLowerCase();
-    if (!ALLOWED_EXT.has(ext)) {
-      return NextResponse.json(
-        { error: "Invalid file type", ext },
-        { status: 400 }
-      );
-    }
-
-    const planFolder = PLAN_TO_FOLDER[plan] || plan;
-    if (!ALLOWED_FOLDERS.has(planFolder)) {
-      return NextResponse.json(
-        { error: "Invalid plan folder", plan },
-        { status: 400 }
-      );
-    }
-
-    // 設定 Base Directory
-    const baseDir = path.join(process.cwd(), "storage", "designs", planFolder);
-
-    // 1️⃣ 第一試：直接路徑
-    let finalPath = path.join(baseDir, file);
-
-    // ✅ 路徑逃逸檢查 (Path Traversal Check)
-    const resolvedBase = path.resolve(baseDir) + path.sep;
-    const resolvedFinal = path.resolve(finalPath);
-    
-    // 注意：這裡只檢查是否在 storage/designs 內，不一定要在 baseDir 內 (如果有的話)
-    // 但為了安全，最好限制在 planFolder 內
-    if (!resolvedFinal.startsWith(path.resolve(process.cwd(), "storage", "designs"))) {
-       return NextResponse.json({ error: "Access denied" }, { status: 403 });
-    }
-
-    let found = fs.existsSync(finalPath);
-
-    // 2️⃣ 第二試：如果找不到，嘗試搜尋子資料夾 (容錯機制)
-    if (!found) {
-      const pureFileName = path.basename(file); // 只取檔名
-      if (fs.existsSync(baseDir)) {
-        try {
-          const subFolders = fs
-            .readdirSync(baseDir, { withFileTypes: true })
-            .filter((d) => d.isDirectory())
-            .map((d) => d.name);
-
-          for (const folder of subFolders) {
-            const tryPath = path.join(baseDir, folder, pureFileName);
-            if (fs.existsSync(tryPath)) {
-              finalPath = tryPath;
-              found = true;
-              break;
-            }
-          }
-        } catch (e) {
-          console.error("Error scanning subfolders:", e);
-        }
+      const pngs = all.filter((n) => n.toLowerCase().endsWith(".png"));
+      if (pngs.length === 0) {
+        return NextResponse.json(
+          { error: "No mystery PNG files found", dir: "standard_png/mystery" },
+          { status: 404 }
+        );
       }
-    }
 
-    if (!found) {
-      // 🛑 這是關鍵：如果這裡觸發，Vercel Logs 會告訴你它試圖找什麼路徑
-      console.error("[download] File NOT FOUND:", {
-        planParam: plan,
-        folderUsed: planFolder,
-        lookingFor: file,
-        finalPathTried: finalPath
+      const pick = pngs[Math.floor(Math.random() * pngs.length)];
+      const abs = safeJoin(mysteryDir, pick);
+      const buf = await fs.readFile(abs);
+
+      return new NextResponse(buf, {
+        status: 200,
+        headers: {
+          "Content-Type": "image/png",
+          "Content-Disposition": `attachment; filename="${pick}"`,
+          "Cache-Control": "no-store",
+        },
       });
-      
-      return NextResponse.json(
-        { error: "File not found on server", file: path.basename(file) },
-        { status: 404 }
-      );
     }
 
-    // 4️⃣ 回傳檔案
-    const buf = fs.readFileSync(finalPath);
-    const fileName = path.basename(finalPath);
+    // ✅ 2) 其他 plan：照你原本的 file 路徑下載
+    if (!file) {
+      return NextResponse.json({ error: "Missing file" }, { status: 400 });
+    }
+
+    const baseDir = path.join(ROOT, folder);
+    const absPath = safeJoin(baseDir, file);
+
+    // 防止讀不到
+    const buf = await fs.readFile(absPath);
+
+    const ct = contentTypeByExt(absPath);
+    const outName = path.basename(absPath);
 
     return new NextResponse(buf, {
       status: 200,
       headers: {
-        "Content-Type": contentTypeByExt(fileName),
-        "Content-Disposition": `attachment; filename="${fileName}"`,
-        "Cache-Control": "private, max-age=0, no-cache",
+        "Content-Type": ct,
+        "Content-Disposition": `attachment; filename="${outName}"`,
+        "Cache-Control": "no-store",
       },
     });
-
   } catch (err: any) {
-    console.error("[download] Server Error:", err);
     return NextResponse.json(
-      { error: "Internal Server Error", message: String(err) },
-      { status: 500 }
+      { error: err?.message || "File not found on server" },
+      { status: 404 }
     );
   }
 }
