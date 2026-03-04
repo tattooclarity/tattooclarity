@@ -770,12 +770,10 @@ function CustomizeContent() {
             transform: translateX(4px);
           }
         }
-/* Mobile-only line break for "Results may vary" */
-.rmvLine1 { display: inline; }
-.rmvLine2 { display: inline; }
 
+.rmvBreak { display: none; }
 @media (max-width: 640px) {
-  .rmvLine2 { display: block; }
+  .rmvBreak { display: block; line-height: 0; }
 }
 
 
@@ -784,12 +782,6 @@ function CustomizeContent() {
         @media (max-width: 900px) { 
           .mobileBreak { display: block !important; height: 0 !important; }
         }
-          .rmvLine1 { display: inline; }
-.rmvLine2 { display: inline; }
-
-@media (max-width: 640px) {
-  .rmvLine2 { display: block; } /* ✅ 只有手機先換行 */
-}
 
         /* ✅ FIXED 7: Prevent overlapping tip text on mobile */
         .tipPopup {
@@ -1671,8 +1663,9 @@ function CustomizeContent() {
                 lineHeight: 1.2,
               }}
             >
-              <span className="rmvLine1">AI Mockup • Results</span>{" "}
-<span className="rmvLine2">may vary</span>
+              <span>AI Mockup • Results</span>
+<br className="rmvBreak" />
+<span>may vary</span>
             </div>
 
             {/* Male */}
