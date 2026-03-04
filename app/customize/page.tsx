@@ -208,6 +208,7 @@ const ARM_CLICKS_TO_HIDE = 3;
 const HIDE_AFTER_MS = 5000;
 
 // ✅ FIXED 1: Safer slugify function (use hyphens, strip others)
+// e.g. "True Qi" -> "true-qi", "Prime" -> "prime"
 const toSlug = (s: string) =>
   String(s || '')
     .trim()
@@ -222,6 +223,8 @@ const pickToMeta = (p: PickChoice) => {
   const lang = p.script === 'simplified' ? 'sc' : 'tc';
   const letter = (p.fontId.match(/-(A|B|C)$/i)?.[1] || 'A').toUpperCase();
   
+  // Backend often prefers just "A" or "B", but frontend might use "SA"/"SB".
+  // We send BOTH to be 100% safe.
   const style = `S${letter}`;   // Legacy support: "SA", "SB"
   const styleLetter = letter;   // ✅ Backend safe: "A", "B", "C"
   
@@ -430,6 +433,7 @@ function CustomizeContent() {
     const key = `${theme.id}:${charObj.label}:${pickScript}:${usePhraseForThisPick ? 'phrase' : 'char'}`;
 
     setPicked((prev) => {
+      // ✅ 防重複選擇：唔理 script，只理 themeId/label/usePhrase
       const existingIdx = prev.findIndex(
         (p) => p.themeId === theme.id && p.option.label === charObj.label && p.usePhrase === usePhraseForThisPick
       );
@@ -580,6 +584,7 @@ function CustomizeContent() {
   const selectionValid = isMystery ? true : picked.length === selectionNeeded;
   const canProceed = confirmed && selectionValid && !isRedirecting;
 
+  // ✅ FIX: Build payload with granular metadata (label, lang, style, styleLetter, fontId, type)
   const buildCheckoutPayload = () => {
     const p1 = picked[0];
     const p2 = picked[1];
@@ -587,10 +592,12 @@ function CustomizeContent() {
     const m1 = isMystery ? null : (p1 ? pickToMeta(p1) : null);
     const m2 = isMystery ? null : (p2 ? pickToMeta(p2) : null);
 
+    // Old generic params fallback (optional, useful for debug)
     const qtyParam = isMystery ? 1 : picked.length;
     const layoutParam = `${layoutByArm.male},${layoutByArm.female}`;
     const charParam = isMystery ? 'mystery' : activeCharsStringForDisplay;
 
+    // ✅ FIXED 3: Robust check for Duo validity before sending second set of metadata
     const duoOk = bundle === 'duo' && picked.length >= 2;
 
     return {
@@ -598,14 +605,16 @@ function CustomizeContent() {
       bundle,
       qty: qtyParam,
       
+      // ✅ 單買 / DUO 第一份 (Core Metadata)
       theme: isMystery ? 'mystery' : (m1?.theme || ''),
       label: isMystery ? 'mystery' : (m1?.label || ''),
       lang:  isMystery ? 'mystery' : (m1?.lang  || ''),
-      style: isMystery ? 'mystery' : (m1?.style || ''),
-      styleLetter: isMystery ? 'mystery' : (m1?.styleLetter || ''),
-      fontId: isMystery ? 'mystery' : (m1?.fontId || ''),
+      style: isMystery ? 'mystery' : (m1?.style || ''),           // SA, SB
+      styleLetter: isMystery ? 'mystery' : (m1?.styleLetter || ''), // A, B, C (Backend preferred)
+      fontId: isMystery ? 'mystery' : (m1?.fontId || ''),         // raw fontId
       type:  isMystery ? 'mystery' : (m1?.type  || ''),
 
+      // ✅ DUO 第二份 (Only if bundle='duo' AND we have 2 picks)
       theme2: duoOk ? (m2?.theme || '') : '',
       label2: duoOk ? (m2?.label || '') : '',
       lang2:  duoOk ? (m2?.lang  || '') : '',
@@ -614,6 +623,7 @@ function CustomizeContent() {
       fontId2: duoOk ? (m2?.fontId || '') : '',
       type2:  duoOk ? (m2?.type  || '') : '',
 
+      // Legacy/Visual params
       layout: layoutParam,
       char: charParam,
       priceShown: displayPrice,
@@ -723,6 +733,7 @@ function CustomizeContent() {
     ? 'I confirm the character(s), script(s), font style(s), and total shown above are correct.'
     : `Please select ${selectionNeeded} design${selectionNeeded === 1 ? '' : 's'} to continue.`;
 
+  // ✅ FIXED 4: Deduplicate meanings for cleaner display
   const meaningText = Array.from(new Set(picked.map((p) => p.option.meaning))).join(' + ');
 
   return (
@@ -751,21 +762,40 @@ function CustomizeContent() {
           --red: #d9534f;
         }
         @keyframes gentleBounceHorizontal {
-          0%, 100% { transform: translateX(0); }
-          50% { transform: translateX(4px); }
+          0%,
+          100% {
+            transform: translateX(0);
+          }
+          50% {
+            transform: translateX(4px);
+          }
         }
+/* Mobile-only line break for "Results may vary" */
+.rmvLine1 { display: inline; }
+.rmvLine2 { display: inline; }
 
-        /* ===== Mobile Break ===== */
+@media (max-width: 640px) {
+  .rmvLine2 { display: block; }
+}
+
+
+        /* ✅ FIXED 5: Added missing mobileBreak class with 900px breakpoint */
         .mobileBreak { display: none !important; }
-        @media (max-width: 640px) { 
+        @media (max-width: 900px) { 
           .mobileBreak { display: block !important; height: 0 !important; }
         }
+          .rmvLine1 { display: inline; }
+.rmvLine2 { display: inline; }
 
-        /* ✅ Prevent overlapping tip text on mobile */
+@media (max-width: 640px) {
+  .rmvLine2 { display: block; } /* ✅ 只有手機先換行 */
+}
+
+        /* ✅ FIXED 7: Prevent overlapping tip text on mobile */
         .tipPopup {
           position: absolute;
-          top: calc(100% + 4px);
-          right: 0;
+          top: 2px;
+          right: 145px;
         }
         @media (max-width: 640px) {
           .tipPopup {
@@ -813,25 +843,31 @@ function CustomizeContent() {
             grid-template-columns: 1fr !important;
             gap: 24px !important;
           }
+
           .previewCol {
             position: static !important;
             top: auto !important;
           }
+
           .plansRow {
             flex-wrap: wrap !important;
             gap: 10px !important;
           }
+
           .plansRow > button {
             flex: 1 1 calc(50% - 10px) !important;
           }
+
           .planStandard {
             transform: none !important;
           }
         }
+
         @media (max-width: 520px) {
           .plansRow > button {
             flex: 1 1 100% !important;
           }
+
           .previewGrid {
             grid-template-columns: 1fr !important;
           }
@@ -967,6 +1003,7 @@ function CustomizeContent() {
               BEST VALUE
             </div>
 
+            {/* ✅ 更強版本：Duo Active 提示 */}
             {currentPlan === 'standard' && duoActive && (
               <div
                 style={{
@@ -1025,6 +1062,7 @@ function CustomizeContent() {
               position: 'relative',
             }}
           >
+            {/* ✅ 更強版本：Duo Active 提示 */}
             {currentPlan === 'premium' && duoActive && (
               <div
                 style={{
@@ -1107,6 +1145,7 @@ function CustomizeContent() {
             }}
           >
             <div>
+              {/* ✅ 更強版本：只係 duo 先 show Save */}
               {bundle === 'duo' ? (
                 <div style={{ fontWeight: 900, fontSize: 14 * fontScale, color: '#e24a4a' }}>You save ${saveAmt}</div>
               ) : (
@@ -1630,12 +1669,10 @@ function CustomizeContent() {
                 pointerEvents: 'none',
                 textAlign: 'center',
                 lineHeight: 1.2,
-                whiteSpace: 'normal',
               }}
             >
-              AI Mockup • Results
-<br className="mobileBreak" />
-{' '}may vary
+              <span className="rmvLine1">AI Mockup • Results</span>{" "}
+<span className="rmvLine2">may vary</span>
             </div>
 
             {/* Male */}
@@ -1864,6 +1901,7 @@ function CustomizeContent() {
                 Final price shown in USD.
               </div>
 
+              {/* ✅ 更強版本：duo 先 show saving line（提升成交） */}
               {canDuo && bundle === 'duo' && saveAmt > 0 && (
                 <div style={{ fontSize: 10, color: '#e24a4a', fontWeight: 900, marginTop: 4, textAlign: 'right' }}>
                   You saved ${saveAmt} with Duo.
@@ -1889,6 +1927,7 @@ function CustomizeContent() {
             </span>
           </label>
 
+          {/* ✅ FIXED 6: Button Text - Method 1 */}
           <button
             disabled={!canProceed}
             onClick={redirectToStripe}
@@ -1942,3 +1981,5 @@ export default function Page() {
     </div>
   );
 }
+
+
