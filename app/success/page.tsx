@@ -35,10 +35,7 @@ function normalizeBundle(input: string | null): Bundle {
 function SuccessContent() {
   const sp = useSearchParams();
 
-  // ✅ 新版：用 session_id（來自 success_url 的 {CHECKOUT_SESSION_ID}）
   const sessionId = sp.get("session_id") || "";
-
-  // ✅ 兼容舊版（你之前用 order_id）
   const legacyOrderId = sp.get("order_id") || "";
 
   const plan = normalizePlan(sp.get("plan"));
@@ -48,7 +45,6 @@ function SuccessContent() {
   const [email, setEmail] = useState<string | null>(null);
   const [loading, setLoading] = useState<boolean>(!!sessionId);
 
-  // ✅ A方案核心：用 session_id call 你自己 API -> retrieve stripe session -> 取 email
   useEffect(() => {
     if (!sessionId) {
       setLoading(false);
@@ -105,11 +101,21 @@ function SuccessContent() {
     return PLAN_PRICE[plan];
   }, [plan, bundle]);
 
-  // ✅ 新版 download 連結：改用 session_id
-  // （下載頁你之後都要改成讀 session_id，並用同一個 /api/stripe/session 去驗證 paid + 取 metadata）
+  /**
+   * ✅ 關鍵修復：
+   * 你的 download page 仍然用 order_id 驗證（/api/order/verify 之類）。
+   * 所以我而家「同時」帶：
+   * - order_id = sessionId   （讓舊 download flow 立即可用）
+   * - session_id = sessionId （讓你之後新 flow 也可用）
+   * - plan / bundle          （舊頁面如果要用到也有）
+   */
   const downloadHref = sessionId
-    ? `/download?session_id=${encodeURIComponent(sessionId)}`
-    : `/download?order_id=${encodeURIComponent(legacyOrderId)}&plan=${encodeURIComponent(plan)}&bundle=${encodeURIComponent(bundle)}`;
+    ? `/download?order_id=${encodeURIComponent(sessionId)}&session_id=${encodeURIComponent(
+        sessionId
+      )}&plan=${encodeURIComponent(plan)}&bundle=${encodeURIComponent(bundle)}`
+    : `/download?order_id=${encodeURIComponent(legacyOrderId)}&plan=${encodeURIComponent(
+        plan
+      )}&bundle=${encodeURIComponent(bundle)}`;
 
   const shownIdLabel = sessionId ? "Session ID:" : "Order ID:";
   const shownIdValue = sessionId || legacyOrderId || "(missing)";
@@ -156,7 +162,6 @@ function SuccessContent() {
           </span>
         </div>
 
-        {/* ✅ 顯示客人付款時輸入的 Email（A方案） */}
         <div style={{ marginTop: 10, color: "#666", fontSize: 14 }}>
           <span>Email:</span>{" "}
           {loading ? (
@@ -170,7 +175,6 @@ function SuccessContent() {
           )}
         </div>
 
-        {/* ✅ 額外：付款驗證狀態（避免未付款都入到 success） */}
         {sessionId && (
           <div style={{ marginTop: 10, fontSize: 14 }}>
             {loading ? (
@@ -197,7 +201,6 @@ function SuccessContent() {
             color: "#fff",
             textDecoration: "none",
             fontWeight: 900,
-            // ✅ 未確認付款就先灰掉（仍可點，但視覺提示）
             opacity: sessionId && paid === false ? 0.5 : 1,
             pointerEvents: sessionId && paid === false ? "none" : "auto",
           }}
@@ -231,11 +234,9 @@ function SuccessContent() {
         )}
       </p>
 
-      {/* ✅ 如果冇 session_id，提示你可能仲未改 success_url */}
       {!sessionId && (
         <p style={{ marginTop: 10, color: "#b00020", fontSize: 13 }}>
-          Note: session_id is missing. Make sure your checkout success_url uses:
-          {" "}
+          Note: session_id is missing. Make sure your checkout success_url uses:{" "}
           <span style={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace" }}>
             ?session_id=&#123;CHECKOUT_SESSION_ID&#125;
           </span>

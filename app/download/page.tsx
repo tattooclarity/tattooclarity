@@ -101,6 +101,7 @@ function mailtoSupport(subject: string) {
   return `mailto:${SUPPORT_EMAIL}?subject=${s}`;
 }
 
+// ✅ 舊 verify API（你原本用嘅）
 type VerifyResponse = {
   ok: boolean;
   paid?: boolean;
@@ -110,11 +111,25 @@ type VerifyResponse = {
   error?: string;
 };
 
+// ✅ 新 stripe session API（你新增嘅 /api/stripe/session）
+type StripeSessionResponse = {
+  paid: boolean;
+  email?: string | null;
+  session_id?: string;
+  metadata?: Record<string, string>;
+  error?: string;
+};
+
 function DownloadContent() {
   const sp = useSearchParams();
 
-  // ✅ order_id 必須存在
-  const orderId = sp.get("order_id") || "UNKNOWN";
+  /**
+   * ✅ 兼容最重要修復：
+   * - 你新流程係 session_id
+   * - 舊流程係 order_id
+   * 所以：orderId 同時接受兩者
+   */
+  const orderId = sp.get("order_id") || sp.get("session_id") || "UNKNOWN";
 
   // URL fallback
   const urlPlan = normalizePlan(sp.get("plan"));
@@ -140,10 +155,41 @@ function DownloadContent() {
     async function run() {
       try {
         setLoading(true);
-        const res = await fetch(
-          `/api/order/verify?order_id=${encodeURIComponent(orderId)}`,
-          { cache: "no-store" }
-        );
+
+        // ✅ 如果係 Stripe checkout session id（cs_ 開頭）
+        // 優先走新 API：/api/stripe/session
+        if (orderId && orderId.startsWith("cs_")) {
+          const res = await fetch("/api/stripe/session", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ session_id: orderId }),
+            cache: "no-store",
+          });
+
+          const data = (await res.json().catch(() => ({}))) as StripeSessionResponse;
+
+          if (!alive) return;
+
+          if (!res.ok) {
+            setVerify({ ok: false, paid: false, error: data?.error || "Stripe session verify failed" });
+            return;
+          }
+
+          // ✅ 轉成你原本 UI 期待的 verify 結構
+          setVerify({
+            ok: true,
+            paid: !!data.paid,
+            order_id: orderId,
+            purchased_at: Date.now(), // 前端用來算 expiry，先用 now（可接受）
+            metadata: data.metadata || {},
+          });
+          return;
+        }
+
+        // ✅ 否則走舊 verify API（兼容舊連結/舊單）
+        const res = await fetch(`/api/order/verify?order_id=${encodeURIComponent(orderId)}`, {
+          cache: "no-store",
+        });
         const data = (await res.json()) as VerifyResponse;
         if (!alive) return;
         setVerify(data);
@@ -156,7 +202,8 @@ function DownloadContent() {
       }
     }
 
-    if (orderId && orderId.startsWith("cs_")) run();
+    // ✅ 允許 cs_ 或其他 id；UNKNOWN/空就直接 invalid
+    if (orderId && orderId !== "UNKNOWN") run();
     else {
       setVerify({ ok: false, error: "Invalid or missing order_id." });
       setLoading(false);
@@ -202,6 +249,7 @@ function DownloadContent() {
 
   const days = planDays(plan);
 
+  // ✅ 若舊 verify 有 purchased_at，就用佢；新 API 我哋用 now (上面 set 咗)
   const purchasedAtMs = verify?.purchased_at || 0;
   const invalidLink = !ok || !paid || !purchasedAtMs;
 
@@ -212,7 +260,7 @@ function DownloadContent() {
 
   /**
    * ✅ Download list
-   * - Mystery：只用 order_id，後端自己抽（locked）
+   * - Mystery：用 metadata.mystery_file（你 checkout 已存好）
    * - Standard/Basic/Premium：用 file path
    */
   const downloads = useMemo(() => {
@@ -220,10 +268,16 @@ function DownloadContent() {
 
     // Mystery
     if (plan === "mystery") {
+      // ✅ 用 metadata 內的 mystery_file（如果冇就 fallback）
+      const mysteryFile = (md as any).mystery_file || "";
+      const folder = (md as any).mystery_planFolder || "mystery_png";
+
       list.push({
         key: "mystery",
         label: "Download Mystery Tattoo (Standard Quality)",
-        href: `/api/download?plan=mystery&order_id=${encodeURIComponent(orderId)}`,
+        href: mysteryFile
+          ? `/api/download?plan=${encodeURIComponent(folder)}&file=${encodeURIComponent(mysteryFile)}`
+          : `/api/download?plan=mystery&order_id=${encodeURIComponent(orderId)}`,
         className: "btnGold",
       });
       return list;
@@ -295,6 +349,7 @@ function DownloadContent() {
   }, [
     plan,
     orderId,
+    md,
     theme,
     label,
     lang,
@@ -404,7 +459,6 @@ function DownloadContent() {
                 </div>
               ) : null}
 
-              {/* ✅ 重要：移除 download 屬性，避免錯誤時下載 download.json */}
               {downloads.map((d) => (
                 <a key={d.key} href={d.href} className={d.className}>
                   <span style={{ fontSize: 18 }}>↓</span> {d.label}
@@ -447,14 +501,12 @@ export default function DownloadPage() {
 
       <style jsx global>{`
         :root {
-          /* ✅ 更奶油、唔會「白到刺眼」 */
           --bg: #f7f0e6;
           --card: #ffffff;
           --ink: #111;
           --muted: rgba(0, 0, 0, 0.62);
           --border: rgba(0, 0, 0, 0.08);
 
-          /* ✅ 金色降低飽和 + 深金更穩重 */
           --gold: #c5a14a;
           --goldDeep: #7a5b18;
         }
