@@ -6,193 +6,335 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 
 type Plan = "basic" | "standard" | "premium" | "mystery";
+
+// ✅ 全站統一 Support Email
 const SUPPORT_EMAIL = "info@tattooclarity.com";
 
-// Helper functions... (保留你原本的 helpers，這裡簡化省略)
-function toLower(v: any) { return String(v || "").toLowerCase(); }
+// ---- helpers ----
+function toStr(v: any) {
+  return typeof v === "string" ? v : v == null ? "" : String(v);
+}
+function toLower(v: any) {
+  return toStr(v).toLowerCase();
+}
+function toUpper(v: any) {
+  return toStr(v).toUpperCase();
+}
+function toBool(v: any) {
+  const s = toLower(v);
+  return s === "1" || s === "true" || s === "yes" || s === "y" || s === "duo";
+}
+function toInt(v: any) {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : 0;
+}
+
+// ✅ plan normalize
 function normalizePlan(input: any): Plan {
   const p = toLower(input || "standard");
-  if (["basic", "standard", "premium", "mystery"].includes(p)) return p as Plan;
+  if (p === "basic") return "basic";
+  if (p === "standard") return "standard";
+  if (p === "premium") return "premium";
+  if (p === "mystery") return "mystery";
   return "standard";
 }
+
 function planLabel(plan: Plan, isDuo: boolean) {
-  const base = plan.charAt(0).toUpperCase() + plan.slice(1);
-  if (plan === "mystery") return base;
+  const base =
+    plan === "basic"
+      ? "Basic"
+      : plan === "standard"
+      ? "Standard"
+      : plan === "premium"
+      ? "Premium"
+      : "Mystery";
+  
+  if (plan === "mystery") return base; // Mystery 永不顯示 DUO
   return isDuo ? `${base} (DUO)` : base;
 }
-function formatDate(ms: number) {
-  return new Date(ms).toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" });
+
+function planDays(plan: Plan) {
+  if (plan === "premium") return 45;
+  if (plan === "standard") return 30;
+  if (plan === "mystery") return 30;
+  return 15;
 }
+
+function addDays(startMs: number, days: number) {
+  return startMs + days * 24 * 60 * 60 * 1000;
+}
+
+function formatDate(ms: number) {
+  return new Date(ms).toLocaleDateString("en-US", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+  });
+}
+
+function includesText(plan: Plan, isDuo: boolean) {
+  if (plan === "premium") {
+    return isDuo
+      ? "2× 3000×3000px Transparent Background PNG + 2× Vector SVG"
+      : "3000×3000px Transparent Background PNG + Vector SVG";
+  }
+  if (plan === "standard") {
+    return isDuo
+      ? "2× 3000×3000px Transparent Background PNG (Print-Ready)"
+      : "3000×3000px Transparent Background PNG (Print-Ready)";
+  }
+  if (plan === "mystery") {
+    return "3000×3000px Transparent Background PNG (Standard Quality)";
+  }
+  return isDuo
+    ? "2× 3000×3000px White Background PNG (Print-Ready)"
+    : "3000×3000px White Background PNG (Print-Ready)";
+}
+
+function pillText(plan: Plan) {
+  if (plan === "premium") return "ALL INCLUDED";
+  return "PNG Only";
+}
+
+function mailtoSupport(subject: string) {
+  const s = encodeURIComponent(subject);
+  return `mailto:${SUPPORT_EMAIL}?subject=${s}`;
+}
+
+type VerifyResponse = {
+  ok: boolean;
+  paid?: boolean;
+  order_id?: string;
+  purchased_at?: number;
+  metadata?: Record<string, string>;
+  error?: string;
+};
 
 function DownloadContent() {
   const sp = useSearchParams();
   const orderId = sp.get("order_id") || "UNKNOWN";
-  
-  // State
-  const [loading, setLoading] = useState(true);
-  const [verify, setVerify] = useState<any>(null); // 簡化 type
 
-  // Fetch verify
+  // URL fallbacks
+  const urlPlan = normalizePlan(sp.get("plan"));
+  const urlTheme = sp.get("theme") || "balance";
+  const urlLabel = sp.get("label") || "harmony";
+  const urlLang = (sp.get("lang") || "tc").toLowerCase();
+  const urlStyle = (sp.get("style") || "SA").toUpperCase();
+  const urlType = (sp.get("type") || "single").toLowerCase(); 
+
+  const [loading, setLoading] = useState(true);
+  const [verify, setVerify] = useState<VerifyResponse | null>(null);
+
   useEffect(() => {
-    if (!orderId || !orderId.startsWith("cs_")) {
-        setVerify({ ok: false, error: "Invalid Order ID" });
+    let alive = true;
+    async function run() {
+      try {
+        setLoading(true);
+        const res = await fetch(
+          `/api/order/verify?order_id=${encodeURIComponent(orderId)}`,
+          { cache: "no-store" }
+        );
+        const data = (await res.json()) as VerifyResponse;
+        if (!alive) return;
+        setVerify(data);
+      } catch (e: any) {
+        if (!alive) return;
+        setVerify({ ok: false, error: e?.message || "Verify failed" });
+      } finally {
+        if (!alive) return;
         setLoading(false);
-        return;
+      }
     }
-    fetch(`/api/order/verify?order_id=${encodeURIComponent(orderId)}`)
-      .then(res => res.json())
-      .then(data => setVerify(data))
-      .catch(err => setVerify({ ok: false, error: err.message }))
-      .finally(() => setLoading(false));
+    if (orderId && orderId.startsWith("cs_")) run();
+    else {
+      setVerify({ ok: false, error: "Invalid or missing order_id." });
+      setLoading(false);
+    }
+    return () => { alive = false; };
   }, [orderId]);
 
+  const paid = !!verify?.paid;
+  const ok = !!verify?.ok;
   const md = verify?.metadata || {};
-  const plan = normalizePlan(md.plan || sp.get("plan"));
-  
-  // Duo Check
-  const isDuo = plan !== "mystery" && (
-    md.bundle === "duo" || 
-    sp.get("bundle") === "duo" || 
-    Number(md.qty) >= 2 || 
-    (md.label2 && md.label2 !== "")
-  );
+  const plan = normalizePlan(md.plan || urlPlan);
 
-  // Time logic
-  const days = plan === "premium" ? 45 : (plan === "standard" || plan === "mystery" ? 30 : 15);
-  const purchasedAt = verify?.purchased_at || 0;
-  const expiresAt = purchasedAt + days * 86400000;
-  const isExpired = !verify?.ok ? false : Date.now() > expiresAt;
-  const invalidLink = !loading && !verify?.ok;
+  const qtyRaw =
+    toInt(md.qty) ||
+    toInt(md.quantity) ||
+    toInt(sp.get("qty")) ||
+    (toBool((md as any).duo) ? 2 : 0) ||
+    (toLower((md as any).bundle) === "duo" ? 2 : 0) ||
+    (toBool(sp.get("duo")) ? 2 : 0) ||
+    1;
+  const isDuo = plan === "mystery" ? false : qtyRaw >= 2;
 
-  // Metadata Extraction
-  const theme = md.theme || "balance";
-  const label = md.label || "harmony";
-  const lang = (md.lang || "tc").toLowerCase();
-  const style = (md.style || "SA").toUpperCase();
+  const theme = (md.theme || urlTheme) || "balance";
+  const label = (md.label || urlLabel) || "harmony";
+  const lang = ((md.lang || urlLang) || "tc").toLowerCase();
+  const style = ((md.style || urlStyle) || "SA").toUpperCase();
+  const isPhrase = ((md.type || urlType) || "single") === "phrase";
 
-  const theme2 = md.theme2 || theme;
-  const label2 = md.label2 || "";
-  const lang2 = (md.lang2 || lang).toLowerCase();
-  const style2 = (md.style2 || style).toUpperCase();
+  const label2 = (md.label2 || sp.get("label2") || "") as string;
+
+  const days = planDays(plan);
+  const purchasedAtMs = verify?.purchased_at || 0;
+  const invalidLink = !ok || !paid || !purchasedAtMs;
+  const expiresAtMs = invalidLink ? 0 : addDays(purchasedAtMs, days);
+  const isExpired = invalidLink ? true : Date.now() > expiresAtMs;
+  const missingDuoSecond = isDuo && !label2;
 
   const downloads = useMemo(() => {
-    const list = [];
+    const list: Array<{ key: string; label: string; href: string; className: string }> = [];
+    const downloadPlan: string = plan === "premium" ? "premium_png" : plan;
 
-    // ✅ Mystery Logic: 讀取 Checkout 存的檔名
     if (plan === "mystery") {
-        // 從 metadata 拿檔名，如果沒有就用預設
-        const mysteryFile = md.mystery_file || "mystery_mystery_MYSTERY.png";
-        // 告訴 API 去 mystery_png 資料夾找
-        const downloadPlan = md.mystery_planFolder || "mystery_png"; 
-        
-        list.push({
-            key: "mystery",
-            label: "Download Mystery Tattoo (Standard Quality)",
-            href: `/api/download?plan=${downloadPlan}&file=${encodeURIComponent(mysteryFile)}`,
-            className: "btnGold"
-        });
+      // ✅ Mystery 專用連結：讓後端根據 order_id 抽圖
+      const mysteryHref = `/api/download?plan=mystery&order_id=${encodeURIComponent(orderId)}`;
+      list.push({
+        key: "mystery",
+        label: "Download Mystery Tattoo (Standard Quality)",
+        href: mysteryHref,
+        className: "btnGold",
+      });
     } else {
-        // Standard / Premium / Basic Logic
-        const downloadPlan = plan === "premium" ? "premium_png" : plan;
-        
-        // Set 1
-        const file1 = `${theme}/${label}_${lang}_${style}.png`; // 假設單字結構
-        const labelText = plan === "basic" ? "White Background" : "Transparent Background";
-        
+      // ✅ 一般方案邏輯
+      const baseName1 = `${label}${isPhrase ? "_phrase" : ""}_${lang}_${style}`;
+      const filePath1 = `${theme}/${baseName1}.png`;
+      let pngLabel1 = plan === "basic" 
+        ? "Download 3000×3000px White Background PNG (Set 1)" 
+        : "Download 3000×3000px Transparent Background PNG (Set 1)";
+      
+      list.push({
+        key: "png1",
+        label: pngLabel1,
+        href: `/api/download?plan=${encodeURIComponent(downloadPlan)}&file=${encodeURIComponent(filePath1)}`,
+        className: "btnGold",
+      });
+
+      if (isDuo && label2) {
+          const theme2 = (md.theme2 || sp.get("theme2") || theme) as string;
+          const lang2 = (md.lang2 || sp.get("lang2") || lang).toLowerCase();
+          const style2 = (md.style2 || sp.get("style2") || style).toUpperCase();
+          const isPhrase2 = (md.type2 || sp.get("type2") || "single").toLowerCase() === "phrase";
+          const baseName2 = `${label2}${isPhrase2 ? "_phrase" : ""}_${lang2}_${style2}`;
+          const filePath2 = `${theme2}/${baseName2}.png`;
+
+          list.push({
+            key: "png2",
+            label: "Download 3000×3000px PNG (Set 2)",
+            href: `/api/download?plan=${encodeURIComponent(downloadPlan)}&file=${encodeURIComponent(filePath2)}`,
+            className: "btnGold",
+          });
+      }
+
+      if (plan === "premium") {
+        const svgPath1 = `${theme}/${baseName1}.svg`;
         list.push({
-            key: "png1",
-            label: `Download 3000px ${labelText} PNG (Set 1)`,
-            href: `/api/download?plan=${downloadPlan}&file=${encodeURIComponent(file1)}`,
-            className: "btnGold"
+          key: "svg1",
+          label: isDuo ? "Download Vector SVG (Set 1)" : "Download Vector SVG",
+          href: `/api/download?plan=premium_svg&file=${encodeURIComponent(svgPath1)}`,
+          className: "btnOutline",
         });
-
-        // Set 2 (Duo)
-        if (isDuo && label2) {
-            const file2 = `${theme2}/${label2}_${lang2}_${style2}.png`;
-            list.push({
-                key: "png2",
-                label: `Download 3000px ${labelText} PNG (Set 2)`,
-                href: `/api/download?plan=${downloadPlan}&file=${encodeURIComponent(file2)}`,
-                className: "btnGold"
-            });
-        }
-
-        // SVG (Premium)
-        if (plan === "premium") {
-             const svg1 = `${theme}/${label}_${lang}_${style}.svg`;
-             list.push({
-                key: "svg1",
-                label: isDuo ? "Download Vector SVG (Set 1)" : "Download Vector SVG",
-                href: `/api/download?plan=premium_svg&file=${encodeURIComponent(svg1)}`,
-                className: "btnOutline"
-             });
-
-             if (isDuo && label2) {
-                const svg2 = `${theme2}/${label2}_${lang2}_${style2}.svg`;
-                list.push({
-                   key: "svg2",
-                   label: "Download Vector SVG (Set 2)",
-                   href: `/api/download?plan=premium_svg&file=${encodeURIComponent(svg2)}`,
-                   className: "btnOutline"
-                });
-             }
-        }
+        // Duo SVG logic here if needed...
+      }
     }
     return list;
-  }, [plan, isDuo, md, theme, label, lang, style, theme2, label2, lang2, style2]);
+  }, [plan, theme, label, lang, style, isPhrase, isDuo, label2, md, sp, orderId]);
 
-  // UI Render (保留你原本的 CSS 和結構，這裡只列出核心部分)
   return (
     <div className="page">
-        <div className="card">
-            <div className="topLabel">DOWNLOAD CENTER</div>
-            <h1 className="title">Download Ready</h1>
-            <div className="orderRef">ORDER: #{orderId.slice(-6)}</div>
-            
-            {loading && <p>Verifying...</p>}
-            
-            {invalidLink && (
+      <div className="card">
+        <div className="topLabel">DOWNLOAD CENTER</div>
+        <h1 className="title">Download Ready</h1>
+        <p className="subtitle">Your purchase is confirmed. Download your files below.</p>
+        <div className="orderRef">ORDER REFERENCE: <span style={{ color: "rgba(0,0,0,0.65)" }}>#{orderId}</span></div>
+        <div className="box">
+          <div className="boxLabel">YOUR PURCHASE</div>
+          <div className="purchaseRow">
+            <div className="purchaseLeft">
+              <div className="purchasePlan">{planLabel(plan, isDuo)} Plan</div>
+              <div className="purchaseIncludes">{includesText(plan, isDuo)}</div>
+            </div>
+            <div className="pill">{pillText(plan)}</div>
+          </div>
+          <div className="divider" />
+          <div className="policy">
+            <div className="policyRow">
+              <span className="policyKey">Download access:</span>
+              <span className="policyVal">{days} days</span>
+            </div>
+            {!invalidLink && (
+              <div className="policyRow">
+                <span className="policyKey">Expires on:</span>
+                <span className="policyVal">{formatDate(expiresAtMs)}</span>
+              </div>
+            )}
+            {loading ? (
+              <div className="policyNote">Verifying your payment…</div>
+            ) : invalidLink ? (
+              <div className="policyNote">
+                This link is missing purchase verification data. Please contact support.
+                {verify?.error ? (<><br /><span className="mono">{verify.error}</span></>) : null}
+              </div>
+            ) : (
+              <div className="policyNote">Please download and back up your files immediately. Links expire automatically.</div>
+            )}
+          </div>
+          <div className="divider" />
+          <div className="boxLabel" style={{ marginTop: 2 }}>DOWNLOAD</div>
+          {isExpired ? (
+            <div className="expiredBox">
+              <div className="expiredTitle">This download link has expired.</div>
+              <a href={mailtoSupport(`Expired Download - Order ${orderId}`)} className="btnOutline" style={{ marginTop: 12 }}>Contact Support</a>
+            </div>
+          ) : (
+            <>
+              {missingDuoSecond && plan !== "mystery" ? (
                 <div className="expiredBox">
-                    <div className="expiredTitle">Invalid or Missing Order</div>
-                    <div className="expiredText">{verify?.error}</div>
+                  <div className="expiredTitle">DUO purchase detected, but Set 2 data is missing.</div>
                 </div>
-            )}
-
-            {!loading && !invalidLink && (
-                <div className="box">
-                     <div className="boxLabel">YOUR FILES</div>
-                     {isExpired ? (
-                        <div className="expiredBox">Link Expired</div>
-                     ) : (
-                        downloads.map(d => (
-                            <a key={d.key} href={d.href} download className={d.className}>
-                                ↓ {d.label}
-                            </a>
-                        ))
-                     )}
-                </div>
-            )}
-            
-            <Link href="/" className="homeLink">← Back to Homepage</Link>
+              ) : null}
+              {downloads.map((d) => (
+                <a key={d.key} href={d.href} download className={d.className}>
+                  <span style={{ fontSize: 18 }}>↓</span> {d.label}
+                </a>
+              ))}
+              {plan === "mystery" && <div className="hint">*Mystery delivers a randomly selected Standard-quality PNG (locked to your order).</div>}
+            </>
+          )}
         </div>
-        
-        {/* CSS Styles */}
-        <style jsx global>{`
-            /* 把你原本的 CSS 貼在這裡 */
-            .page { min-height: 100vh; display: flex; align-items: center; justify-content: center; background: #fbf6ee; font-family: sans-serif; }
-            .card { background: white; padding: 40px; border-radius: 20px; max-width: 600px; width: 100%; text-align: center; }
-            .btnGold { display: block; background: #caa34a; padding: 15px; border-radius: 10px; margin-bottom: 10px; font-weight: bold; cursor: pointer; }
-            .btnOutline { display: block; border: 1px solid #ddd; padding: 15px; border-radius: 10px; margin-bottom: 10px; font-weight: bold; cursor: pointer; }
-            .expiredBox { background: #fee; padding: 20px; border-radius: 10px; color: #c00; }
-        `}</style>
+        <p className="supportText">Need help? <a href={mailtoSupport(`Help with Order ${orderId}`)} className="supportLink">Contact Support</a></p>
+        <Link href="/" className="homeLink">← Back to Homepage</Link>
+      </div>
     </div>
   );
 }
 
 export default function DownloadPage() {
-    return (
-        <Suspense fallback={<div>Loading...</div>}>
-            <DownloadContent />
-        </Suspense>
-    );
+  return (
+    <>
+      <link
+        href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;800&family=Inter:wght@400;500;600;700;800;900&display=swap"
+        rel="stylesheet"
+      />
+      <style jsx global>{`
+        :root { --bg: #fbf6ee; --card: #ffffff; --ink: #111; --muted: rgba(0, 0, 0, 0.62); --border: rgba(0, 0, 0, 0.08); --gold: #caa34a; --goldDeep: #8a6a1c; }
+        * { box-sizing: border-box; }
+        body { margin: 0; background: var(--bg); color: var(--ink); font-family: Inter, system-ui, -apple-system, sans-serif; }
+        a { color: inherit; text-decoration: none; }
+        .page { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 20px; }
+        .card { background: var(--card); border: 1px solid var(--border); border-radius: 24px; padding: 48px 40px; max-width: 640px; width: 100%; text-align: center; box-shadow: 0 20px 50px rgba(0, 0, 0, 0.05); }
+        .title { font-family: "Playfair Display", serif; font-size: 34px; font-weight: 800; margin: 0 0 10px; }
+        .box { background: #f9f9f9; border: 1px dashed rgba(0, 0, 0, 0.15); border-radius: 16px; padding: 22px; text-align: left; margin-bottom: 26px; }
+        .btnGold { width: 100%; display: flex; align-items: center; justify-content: center; gap: 8px; border: 0; padding: 16px 18px; border-radius: 12px; font-weight: 800; background: linear-gradient(180deg, #caa34a, #8a6a1c); color: #fff; margin-bottom: 12px; cursor: pointer; }
+        .btnOutline { width: 100%; display: flex; align-items: center; justify-content: center; gap: 8px; border: 1.5px solid rgba(0,0,0,0.12); padding: 14px 18px; border-radius: 12px; background: #fff; color: rgba(0,0,0,0.7); cursor: pointer; }
+        .pill { font-size: 11px; font-weight: 900; color: var(--goldDeep); background: rgba(202, 163, 74, 0.12); border: 1px solid rgba(202, 163, 74, 0.25); padding: 6px 10px; border-radius: 999px; }
+        .divider { height: 1px; background: rgba(0, 0, 0, 0.08); margin: 16px 0; }
+        .hint { font-size: 12px; color: rgba(0,0,0,0.45); margin-top: 8px; text-align: center; }
+      `}</style>
+      <Suspense fallback={<div style={{ textAlign: "center", padding: "40px" }}>Loading downloads...</div>}>
+        <DownloadContent />
+      </Suspense>
+    </>
+  );
 }
