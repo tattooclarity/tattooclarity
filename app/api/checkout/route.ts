@@ -1,6 +1,9 @@
 // app/api/checkout/route.ts
 import { NextResponse } from "next/server";
 import Stripe from "stripe";
+import fs from "fs";
+import path from "path";
+import crypto from "crypto";
 
 export const runtime = "nodejs";
 
@@ -43,8 +46,42 @@ function getBaseUrl(req: Request) {
 
 function safeStr(v: any, maxLen = 180) {
   const s = typeof v === "string" ? v : "";
-  // Stripe metadata value limit is 500 chars; we keep it safely shorter.
   return s.length > maxLen ? s.slice(0, maxLen) : s;
+}
+
+/**
+ * ✅ Mystery：從 manifest random 抽一個 standard_png 檔案
+ * 返還：例如 "love/love_phrase_tc_SA.png"
+ */
+function pickMysteryFileFromManifest(): string | null {
+  try {
+    const manifestPath = path.join(
+      process.cwd(),
+      "storage",
+      "manifests",
+      "mystery_pool_standard_png.json"
+    );
+
+    if (!fs.existsSync(manifestPath)) return null;
+
+    const raw = fs.readFileSync(manifestPath, "utf-8");
+    const parsed = JSON.parse(raw) as { files?: string[] };
+
+    const files = Array.isArray(parsed?.files) ? parsed.files : [];
+    if (!files.length) return null;
+
+    // crypto.randomInt is secure & available in node
+    const idx = crypto.randomInt(0, files.length);
+    const f = String(files[idx] || "").trim();
+
+    // basic security
+    if (!f || f.includes("..") || f.includes("\\") || f.startsWith("/")) return null;
+    if (!f.toLowerCase().endsWith(".png")) return null;
+
+    return f;
+  } catch {
+    return null;
+  }
 }
 
 export async function POST(req: Request) {
@@ -58,7 +95,6 @@ export async function POST(req: Request) {
     }
 
     const stripe = new Stripe(key, {
-      // ✅ 如果你嘅 Stripe SDK 版本需要 apiVersion，可以保留；唔需要都唔會壞
       // apiVersion: "2024-06-20",
     });
 
@@ -76,7 +112,7 @@ export async function POST(req: Request) {
     // ✅ 只允許 Standard/Premium 用 DUO；其他一律降回 single
     const duoAllowed = bundle === "duo" && (plan === "standard" || plan === "premium");
 
-    // ✅ 再加一道：DUO 必須真係有第二份 metadata，否則降回 single（避免前端/用戶亂傳）
+    // ✅ DUO 必須真係有第二份 metadata，否則降回 single
     const hasSecondPick =
       typeof body?.theme2 === "string" &&
       typeof body?.label2 === "string" &&
@@ -85,17 +121,16 @@ export async function POST(req: Request) {
 
     const finalBundle: Bundle = duoAllowed && hasSecondPick ? "duo" : "single";
 
-    // ✅ 你 Customize page 送咩過嚟，就儘量存低（無就留空）
-    // 第一份
-    const theme = safeStr(body?.theme);          // "dragon"
-    const label = safeStr(body?.label);          // "flying"
-    const lang = safeStr(body?.lang);            // "tc" | "sc"
-    const style = safeStr(body?.style);          // "SA" | "SB"（legacy）
-    const styleLetter = safeStr(body?.styleLetter); // "A" | "B" | "C"（backend preferred）
-    const fontId = safeStr(body?.fontId);        // "trad-A" / "simp-C"
-    const type = safeStr(body?.type);            // "single" | "phrase"
+    // ✅ 第一份 metadata
+    const theme = safeStr(body?.theme);
+    const label = safeStr(body?.label);
+    const lang = safeStr(body?.lang);
+    const style = safeStr(body?.style);
+    const styleLetter = safeStr(body?.styleLetter);
+    const fontId = safeStr(body?.fontId);
+    const type = safeStr(body?.type);
 
-    // 第二份（DUO）
+    // ✅ 第二份（DUO）
     const theme2 = finalBundle === "duo" ? safeStr(body?.theme2) : "";
     const label2 = finalBundle === "duo" ? safeStr(body?.label2) : "";
     const lang2 = finalBundle === "duo" ? safeStr(body?.lang2) : "";
@@ -104,9 +139,9 @@ export async function POST(req: Request) {
     const fontId2 = finalBundle === "duo" ? safeStr(body?.fontId2) : "";
     const type2 = finalBundle === "duo" ? safeStr(body?.type2) : "";
 
-    // 其他 useful（可選，但好建議存，方便 debug/派檔）
-    const layout = safeStr(body?.layout, 60);    // "horizontal,vertical"
-    const char = safeStr(body?.char, 260);       // display string
+    // ✅ optional debug fields
+    const layout = safeStr(body?.layout, 60);
+    const char = safeStr(body?.char, 260);
     const priceShown = safeStr(String(body?.priceShown ?? ""), 30);
 
     const baseUrl = getBaseUrl(req);
@@ -149,7 +184,7 @@ export async function POST(req: Request) {
             },
           };
 
-    // ✅ guard unit_amount（避免配置錯誤變 0）
+    // ✅ guard unit_amount
     if (
       finalBundle === "duo" &&
       (lineItem as any)?.price_data?.unit_amount &&
@@ -161,8 +196,13 @@ export async function POST(req: Request) {
       );
     }
 
-    // ✅ Mystery：你可以選擇清空非必要 metadata（避免誤派）
     const isMystery = plan === "mystery";
+
+    // ✅ Mystery Random: 抽一張 standard_png 檔
+    const mysteryPicked = isMystery ? pickMysteryFileFromManifest() : null;
+
+    // ✅ fallback file（你而家救火固定檔）
+    const mysteryFallback = "mystery/mystery_mystery_MYSTERY.png";
 
     const session = await stripe.checkout.sessions.create({
       mode: "payment",
@@ -172,7 +212,6 @@ export async function POST(req: Request) {
       success_url: successUrl,
       cancel_url: cancelUrl,
 
-      // ✅ Download / Verify 會用呢堆（完整保存你前端送嘅 granular metadata）
       metadata: {
         plan,
         bundle: finalBundle,
@@ -195,17 +234,19 @@ export async function POST(req: Request) {
         fontId2: finalBundle === "duo" && !isMystery ? fontId2 : "",
         type2: finalBundle === "duo" && !isMystery ? type2 : "",
 
-        // Optional debug/helpful fields
+        // ✅ Mystery delivery fields (IMPORTANT)
+        // download 端只要讀呢兩個就可以派檔
+        mystery_planFolder: isMystery ? "standard_png" : "",
+        mystery_file: isMystery ? (mysteryPicked || mysteryFallback) : "",
+
+        // Optional debug fields
         layout,
         char,
         priceShown,
       },
     });
 
-    return NextResponse.json(
-      { url: session.url, id: session.id },
-      { status: 200 }
-    );
+    return NextResponse.json({ url: session.url, id: session.id }, { status: 200 });
   } catch (err: any) {
     console.error("Checkout error:", err);
     return NextResponse.json(
