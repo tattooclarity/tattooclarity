@@ -208,7 +208,6 @@ const ARM_CLICKS_TO_HIDE = 3;
 const HIDE_AFTER_MS = 5000;
 
 // ✅ FIXED 1: Safer slugify function (use hyphens, strip others)
-// e.g. "True Qi" -> "true-qi", "Prime" -> "prime"
 const toSlug = (s: string) =>
   String(s || '')
     .trim()
@@ -224,7 +223,6 @@ const pickToMeta = (p: PickChoice) => {
   const letter = (p.fontId.match(/-(A|B|C)$/i)?.[1] || 'A').toUpperCase();
   
   // Backend often prefers just "A" or "B", but frontend might use "SA"/"SB".
-  // We send BOTH to be 100% safe.
   const style = `S${letter}`;   // Legacy support: "SA", "SB"
   const styleLetter = letter;   // ✅ Backend safe: "A", "B", "C"
   
@@ -609,9 +607,9 @@ function CustomizeContent() {
       theme: isMystery ? 'mystery' : (m1?.theme || ''),
       label: isMystery ? 'mystery' : (m1?.label || ''),
       lang:  isMystery ? 'mystery' : (m1?.lang  || ''),
-      style: isMystery ? 'mystery' : (m1?.style || ''),           // SA, SB
+      style: isMystery ? 'mystery' : (m1?.style || ''),            // SA, SB
       styleLetter: isMystery ? 'mystery' : (m1?.styleLetter || ''), // A, B, C (Backend preferred)
-      fontId: isMystery ? 'mystery' : (m1?.fontId || ''),         // raw fontId
+      fontId: isMystery ? 'mystery' : (m1?.fontId || ''),          // raw fontId
       type:  isMystery ? 'mystery' : (m1?.type  || ''),
 
       // ✅ DUO 第二份 (Only if bundle='duo' AND we have 2 picks)
@@ -771,9 +769,11 @@ function CustomizeContent() {
           }
         }
 
-        /* ✅ FIXED 5: Added missing mobileBreak class */
-        .mobileBreak { display: none; }
-        @media (max-width: 520px) { .mobileBreak { display: block; } }
+        /* ✅ FIXED 5: Added missing mobileBreak class with 900px breakpoint */
+        .mobileBreak { display: none !important; }
+        @media (max-width: 900px) { 
+          .mobileBreak { display: block !important; height: 0 !important; }
+        }
 
         @font-face {
           font-family: 'TC-A';
@@ -1621,6 +1621,7 @@ function CustomizeContent() {
               position: 'relative',
             }}
           >
+            {/* 置中的 AI Mockup 提示標籤 */}
             <div
               style={{
                 position: 'absolute',
@@ -1637,9 +1638,11 @@ function CustomizeContent() {
                 backdropFilter: 'blur(8px)',
                 zIndex: 10,
                 pointerEvents: 'none',
+                textAlign: 'center',
+                lineHeight: 1.2,
               }}
             >
-              AI Mockup • Results may vary
+              AI Mockup • Results<br className="mobileBreak" />may vary
             </div>
 
             {/* Male */}
