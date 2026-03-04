@@ -63,10 +63,10 @@ export async function GET(req: Request) {
       mystery_png: "mystery_png",
     };
 
-    const planFolder = PLAN_TO_FOLDER[planRaw];
-    if (!planFolder) {
-      return NextResponse.json({ error: "Invalid plan" }, { status: 400 });
-    }
+  const planFolder = PLAN_TO_FOLDER[planRaw];
+if (!planFolder) {
+  return new Response("Invalid plan", { status: 400 });
+}
 
     // ==========================================
     // 🎲 A方案：MYSTERY (no file param needed)
