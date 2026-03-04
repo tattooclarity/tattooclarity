@@ -5,78 +5,117 @@ import { Resend } from "resend";
 
 export const runtime = "nodejs";
 
+// ✅ 不設定 apiVersion，避免 TS 紅線 / 版本不一致問題
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "");
+const resend = new Resend(process.env.RESEND_API_KEY || "");
 
-function getBaseUrl() {
-  const env = process.env.NEXT_PUBLIC_SITE_URL;
-  if (env) return env.replace(/\/$/, "");
-  return "http://localhost:3000";
+// ---- helpers ----
+function trimSlash(u: string) {
+  return u.replace(/\/$/, "");
+}
+
+function getBaseUrl(req: Request) {
+  const envUrl = process.env.NEXT_PUBLIC_SITE_URL;
+  if (envUrl) return trimSlash(envUrl);
+
+  const proto = req.headers.get("x-forwarded-proto") || "https";
+  const host = req.headers.get("x-forwarded-host") || req.headers.get("host") || "";
+  return trimSlash(`${proto}://${host}`);
+}
+
+function escapeHtml(s: string) {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function mustEnv(name: string, v: string | undefined | null) {
+  if (!v) throw new Error(`Missing env: ${name}`);
+  return v;
 }
 
 export async function POST(req: Request) {
-  const secret = process.env.STRIPE_WEBHOOK_SECRET;
-  const stripeKey = process.env.STRIPE_SECRET_KEY;
-  const resendKey = process.env.RESEND_API_KEY;
-  const from = process.env.RESEND_FROM;
-
-  if (!secret || !stripeKey || !resendKey || !from) {
-    return NextResponse.json(
-      { error: "Missing env: STRIPE_WEBHOOK_SECRET / STRIPE_SECRET_KEY / RESEND_API_KEY / RESEND_FROM" },
-      { status: 500 }
-    );
-  }
-
-  const sig = req.headers.get("stripe-signature");
-  if (!sig) return NextResponse.json({ error: "Missing stripe-signature" }, { status: 400 });
-
-  const body = await req.text();
-
-  let event: Stripe.Event;
   try {
-    event = stripe.webhooks.constructEvent(body, sig, secret);
-  } catch (err: any) {
-    return NextResponse.json({ error: `Webhook signature verify failed: ${err?.message}` }, { status: 400 });
-  }
+    const webhookSecret = mustEnv("STRIPE_WEBHOOK_SECRET", process.env.STRIPE_WEBHOOK_SECRET);
+    mustEnv("STRIPE_SECRET_KEY", process.env.STRIPE_SECRET_KEY);
+    mustEnv("RESEND_API_KEY", process.env.RESEND_API_KEY);
+    const from = mustEnv("EMAIL_FROM", process.env.EMAIL_FROM);
 
-  // ✅ 付款成功：checkout.session.completed
-  if (event.type === "checkout.session.completed") {
+    const sig = req.headers.get("stripe-signature");
+    if (!sig) return NextResponse.json({ error: "Missing stripe-signature" }, { status: 400 });
+
+    const body = await req.text();
+
+    let event: Stripe.Event;
+    try {
+      event = stripe.webhooks.constructEvent(body, sig, webhookSecret);
+    } catch (err: any) {
+      return NextResponse.json(
+        { error: `Webhook signature verify failed: ${err?.message || "invalid signature"}` },
+        { status: 400 }
+      );
+    }
+
+    // ✅ 只處理 checkout.session.completed
+    if (event.type !== "checkout.session.completed") {
+      return NextResponse.json({ received: true });
+    }
+
     const session = event.data.object as Stripe.Checkout.Session;
 
-    const email =
-      session.customer_details?.email ||
-      session.customer_email ||
-      undefined;
+    const email = session.customer_details?.email || session.customer_email || "";
+    if (!email) return NextResponse.json({ received: true, skipped: "no_email" });
 
     const plan = (session.metadata?.plan || "standard").toLowerCase();
-    const orderId = session.id; // 例如 cs_test_xxx
+    const sessionId = session.id;
 
-    if (email) {
-      const baseUrl = getBaseUrl();
-      const downloadUrl = `${baseUrl}/download?order_id=${encodeURIComponent(orderId)}&plan=${encodeURIComponent(plan)}`;
+    const baseUrl = getBaseUrl(req);
 
-      const resend = new Resend(resendKey);
+    // ✅ download 已支援：session_id / order_id 都可以
+    const downloadUrl =
+      `${baseUrl}/download?session_id=${encodeURIComponent(sessionId)}` +
+      `&order_id=${encodeURIComponent(sessionId)}` +
+      `&plan=${encodeURIComponent(plan)}`;
 
-      await resend.emails.send({
-        from,
-        to: email,
-        subject: "Your Tattoo Files Are Ready",
-        html: `
-          <div style="font-family: Inter, system-ui, -apple-system, Segoe UI, Arial; line-height:1.6;">
-            <h2 style="margin:0 0 10px;">Download Ready ✅</h2>
-            <p style="margin:0 0 14px;">Thanks for your purchase. Click below to download your files.</p>
-            <p style="margin:0 0 16px;">
-              <a href="${downloadUrl}" style="display:inline-block;padding:12px 16px;border-radius:10px;background:#caa34a;color:#111;text-decoration:none;font-weight:800;">
-                Go to Download
-              </a>
-            </p>
-            <p style="margin:0;color:#666;font-size:12px;">
-              Order: ${orderId}<br/>Plan: ${plan}
-            </p>
-          </div>
-        `,
-      });
-    }
+    const safeDownloadUrl = escapeHtml(downloadUrl);
+
+    await resend.emails.send({
+      from,
+      to: email,
+      subject: "Your Tattoo Files Are Ready ✅",
+      html: `
+        <div style="font-family: Inter, system-ui, -apple-system, Segoe UI, Arial, sans-serif; line-height:1.6; color:#111;">
+          <h2 style="margin:0 0 10px;">Download Ready ✅</h2>
+          <p style="margin:0 0 14px;">Thanks for your purchase. Click below to download your files.</p>
+
+          <p style="margin:0 0 16px;">
+            <a href="${safeDownloadUrl}"
+              style="display:inline-block;padding:12px 16px;border-radius:10px;background:#111;color:#fff;text-decoration:none;font-weight:800;">
+              Go to Download
+            </a>
+          </p>
+
+          <p style="margin:0 0 10px;color:#666;font-size:12px;">
+            If the button doesn't work, copy & paste this link:
+          </p>
+          <p style="margin:0 0 16px;font-size:12px;word-break:break-all;">
+            ${safeDownloadUrl}
+          </p>
+
+          <hr style="border:none;border-top:1px solid #eee;margin:16px 0;" />
+          <p style="margin:0;color:#666;font-size:12px;">
+            Order: ${escapeHtml(sessionId)}<br/>
+            Plan: ${escapeHtml(plan)}
+          </p>
+        </div>
+      `,
+    });
+
+    return NextResponse.json({ received: true, emailed: true });
+  } catch (err: any) {
+    console.error("Webhook error:", err);
+    return NextResponse.json({ error: err?.message || "Webhook error" }, { status: 500 });
   }
-
-  return NextResponse.json({ received: true });
 }
