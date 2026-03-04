@@ -5,19 +5,18 @@ import fs from "fs";
 
 export const runtime = "nodejs";
 
+// ✅ 1. 輔助函數：根據副檔名決定 Content-Type
 function contentTypeByExt(filePath: string) {
   const ext = path.extname(filePath).toLowerCase();
   if (ext === ".png") return "image/png";
-  if (ext === ".svg") return "image/svg+xml";
+  if (ext === ".svg") return "image/svg+xml; charset=utf-8";
   if (ext === ".zip") return "application/zip";
   return "application/octet-stream";
 }
 
-// ✅ 遞歸掃描資料夾，找出所有 PNG 檔案 (為了 Mystery 功能)
+// ✅ 2. 輔助函數：遞歸掃描資料夾找出所有 PNG (給 Mystery 用)
 function getAllPngs(dir: string, fileList: string[] = []) {
-  // 如果資料夾不存在，直接返回空陣列
   if (!fs.existsSync(dir)) return fileList;
-
   const files = fs.readdirSync(dir);
   for (const file of files) {
     const filePath = path.join(dir, file);
@@ -25,7 +24,6 @@ function getAllPngs(dir: string, fileList: string[] = []) {
     if (stat.isDirectory()) {
       getAllPngs(filePath, fileList);
     } else {
-      // 只收集 PNG
       if (file.toLowerCase().endsWith(".png")) {
         fileList.push(filePath);
       }
@@ -37,43 +35,42 @@ function getAllPngs(dir: string, fileList: string[] = []) {
 export async function GET(req: Request) {
   try {
     const url = new URL(req.url);
-    const plan = (url.searchParams.get("plan") || "").toLowerCase();
-    const file = url.searchParams.get("file") || "";
+    const plan = (url.searchParams.get("plan") || "").trim(); // 修正：用 trim()
+    let file = (url.searchParams.get("file") || "").trim();
     const orderId = url.searchParams.get("order_id") || "";
 
     const ROOT = path.join(process.cwd(), "storage", "designs");
 
-    // ✅ Plan -> Folder 映射
-    const PLAN_DIR: Record<string, string> = {
+    // Folder Mapping
+    const PLAN_TO_FOLDER: Record<string, string> = {
       basic: "basic_png",
       standard: "standard_png",
+      premium: "premium_png", // 舊參數名
       premium_png: "premium_png",
       premium_svg: "premium_svg",
-      // Mystery 使用 Standard 的圖庫
+      // Mystery 使用 Standard 的圖庫 (或者 mystery_png 如果你有分開)
       mystery: "standard_png", 
     };
 
-    const folderName = PLAN_DIR[plan];
-    if (!folderName) {
+    const planFolder = PLAN_TO_FOLDER[plan];
+    if (!planFolder) {
       return NextResponse.json({ error: "Invalid plan" }, { status: 400 });
     }
 
     // ==========================================
-    // 🎲 MYSTERY 邏輯：在 Standard 裡隨機抽一張 (鎖定 Order ID)
+    // 🎲 MYSTERY 邏輯：隨機抽圖 (鎖定 Order ID)
     // ==========================================
     if (plan === "mystery") {
-      const targetDir = path.join(ROOT, "standard_png");
+      const targetDir = path.join(ROOT, "standard_png"); // 或 mystery_png
 
-      // 1. 找出 standard_png 內所有圖片 (包含子資料夾)
-      // 注意：這會掃描所有 Standard 圖片作為抽獎池
+      // 1. 找出所有可用圖片
       const allPngs = getAllPngs(targetDir);
 
       if (allPngs.length === 0) {
         return NextResponse.json({ error: "No files available for mystery" }, { status: 404 });
       }
 
-      // 2. 使用 Order ID 算出固定索引 (Deterministic Random)
-      // 算法：加總 Order ID 所有字符的 Code，然後對圖片總數取餘數
+      // 2. 使用 Order ID 算出固定索引
       let pickIndex = 0;
       if (orderId) {
         let sum = 0;
@@ -82,15 +79,13 @@ export async function GET(req: Request) {
         }
         pickIndex = sum % allPngs.length;
       } else {
-        // Fallback: 如果沒有 Order ID 就真隨機
         pickIndex = Math.floor(Math.random() * allPngs.length);
       }
 
-      // 3. 讀取選中的檔案
       const absPath = allPngs[pickIndex];
       const buf = fs.readFileSync(absPath);
       
-      // 為了保持神秘感，下載時檔名隱藏原始名稱
+      // 下載時隱藏真實檔名
       const safeName = orderId ? `Mystery_Tattoo_${orderId.slice(-4)}.png` : "Mystery_Tattoo.png";
 
       return new NextResponse(buf, {
@@ -104,33 +99,62 @@ export async function GET(req: Request) {
     }
 
     // ==========================================
-    // 📂 其他 PLAN 正常下載邏輯 (Standard / Premium / Basic)
+    // 📂 一般 PLAN (Basic/Standard/Premium)
     // ==========================================
+    
+    // 檢查 file 參數
     if (!file) {
       return NextResponse.json({ error: "Missing file parameter" }, { status: 400 });
     }
 
-    // 安全檢查：防止路徑跳脫 (../)
-    if (file.includes("..") || file.startsWith("/")) {
-      return NextResponse.json({ error: "Invalid path" }, { status: 400 });
+    // 自動移除開頭斜線
+    while (file.startsWith("/")) file = file.substring(1);
+
+    // 安全檢查
+    if (file.includes("..") || file.includes("\\")) {
+      return NextResponse.json({ error: "Invalid file path" }, { status: 400 });
     }
 
-    const baseDir = path.join(ROOT, folderName);
-    const absPath = path.join(baseDir, file);
+    const baseDir = path.join(ROOT, planFolder);
+    let finalPath = path.join(baseDir, file);
+    let found = fs.existsSync(finalPath);
 
-    // 檢查檔案是否存在
-    if (!fs.existsSync(absPath)) {
-      console.error(`[Download] File not found: ${absPath}`);
-      return NextResponse.json({ error: "File not found", file }, { status: 404 });
+    // ✅ 容錯機制：如果找不到，嘗試掃描子資料夾 (你原本代碼的優點)
+    if (!found) {
+      const pureFileName = path.basename(file);
+      if (fs.existsSync(baseDir)) {
+        try {
+          const subFolders = fs
+            .readdirSync(baseDir, { withFileTypes: true })
+            .filter((d) => d.isDirectory())
+            .map((d) => d.name);
+
+          for (const folder of subFolders) {
+            const tryPath = path.join(baseDir, folder, pureFileName);
+            if (fs.existsSync(tryPath)) {
+              finalPath = tryPath;
+              found = true;
+              break;
+            }
+          }
+        } catch (e) {
+          console.error("Error scanning subfolders:", e);
+        }
+      }
     }
 
-    const buf = fs.readFileSync(absPath);
-    const outName = path.basename(absPath);
+    if (!found) {
+      console.error("[Download] Not found:", { plan, file, finalPath });
+      return NextResponse.json({ error: "File not found on server", file }, { status: 404 });
+    }
+
+    const buf = fs.readFileSync(finalPath);
+    const outName = path.basename(finalPath);
 
     return new NextResponse(buf, {
       status: 200,
       headers: {
-        "Content-Type": contentTypeByExt(absPath),
+        "Content-Type": contentTypeByExt(finalPath),
         "Content-Disposition": `attachment; filename="${outName}"`,
         "Cache-Control": "private, max-age=3600",
       },

@@ -10,9 +10,6 @@ export const runtime = "nodejs";
 type Plan = "basic" | "standard" | "premium" | "mystery";
 type Bundle = "single" | "duo";
 
-/**
- * ✅ Stripe Price IDs（單買）
- */
 const PRICE_ID: Record<Plan, string> = {
   basic: "price_1T6zEm8ibVtR5keHigRfsfSn",
   standard: "price_1T6yzG8ibVtR5keHaYKudoTW",
@@ -20,9 +17,6 @@ const PRICE_ID: Record<Plan, string> = {
   mystery: "price_1T6zJV8ibVtR5keHmbWQzzRe",
 };
 
-/**
- * ✅ DUO 價錢（USD）
- */
 const DUO_USD: Partial<Record<Plan, number>> = {
   standard: 50,
   premium: 78,
@@ -31,64 +25,34 @@ const DUO_USD: Partial<Record<Plan, number>> = {
 function getBaseUrl(req: Request) {
   const envUrl = process.env.NEXT_PUBLIC_SITE_URL;
   if (envUrl) return envUrl.replace(/\/$/, "");
-
-  const proto =
-    req.headers.get("x-forwarded-proto") ||
-    (req.headers.get("host")?.includes("localhost") ? "http" : "https");
+  const proto = req.headers.get("x-forwarded-proto") || "https";
   const host = req.headers.get("x-forwarded-host") || req.headers.get("host");
-
-  if (!host) {
-    const url = new URL(req.url);
-    return `${url.protocol}//${url.host}`;
-  }
   return `${proto}://${host}`;
 }
 
 function safeStr(v: any, maxLen = 180) {
-  const s = typeof v === "string" ? v : v == null ? "" : String(v);
+  const s = typeof v === "string" ? v : "";
   return s.length > maxLen ? s.slice(0, maxLen) : s;
 }
 
-/**
- * ✅ Mystery：從 manifest random 抽一個 standard_png 檔案
- * manifest 可接受兩種格式：
- * 1) ["mystery/xxx.png", "love/xxx.png", ...]
- * 2) { "files": ["mystery/xxx.png", ...] }
- *
- * 返還：例如 "love/love_phrase_tc_SA.png" 或 "mystery/xxx.png"
- */
-function pickMysteryFileFromManifest(): string | null {
+// ✅ 隨機抽圖函數
+function pickMysteryFile(): string | null {
   try {
-    const manifestPath = path.join(
-      process.cwd(),
-      "storage",
-      "manifests",
-      "mystery_pool_standard_png.json"
-    );
-
+    // 讀取我們剛剛生成的 manifest
+    const manifestPath = path.join(process.cwd(), "storage", "manifests", "mystery_pool.json");
     if (!fs.existsSync(manifestPath)) return null;
 
     const raw = fs.readFileSync(manifestPath, "utf-8");
-    const parsed = JSON.parse(raw) as any;
+    const data = JSON.parse(raw);
+    const files = data.files || [];
 
-    const files: string[] = Array.isArray(parsed)
-      ? parsed
-      : Array.isArray(parsed?.files)
-      ? parsed.files
-      : [];
+    if (files.length === 0) return null;
 
-    if (!files.length) return null;
-
-    // crypto.randomInt is secure & available in node
+    // 隨機選一個索引
     const idx = crypto.randomInt(0, files.length);
-    const f = String(files[idx] || "").trim();
-
-    // basic security
-    if (!f || f.includes("..") || f.includes("\\") || f.startsWith("/")) return null;
-    if (!f.toLowerCase().endsWith(".png")) return null;
-
-    return f;
-  } catch {
+    return files[idx];
+  } catch (e) {
+    console.error("Pick mystery file error:", e);
     return null;
   }
 }
@@ -96,171 +60,89 @@ function pickMysteryFileFromManifest(): string | null {
 export async function POST(req: Request) {
   try {
     const key = process.env.STRIPE_SECRET_KEY;
-    if (!key) {
-      return NextResponse.json(
-        { error: "Missing STRIPE_SECRET_KEY in env." },
-        { status: 400 }
-      );
-    }
+    if (!key) return NextResponse.json({ error: "Missing STRIPE_SECRET_KEY" }, { status: 400 });
 
-    const stripe = new Stripe(key, {
-      // apiVersion: "2024-06-20",
-    });
-
+    const stripe = new Stripe(key);
     const body = (await req.json().catch(() => ({}))) as any;
 
     const planRaw = safeStr(body?.plan || "standard").toLowerCase();
     const bundleRaw = safeStr(body?.bundle || "single").toLowerCase();
-
-    const plan: Plan = (["basic", "standard", "premium", "mystery"].includes(planRaw)
-      ? planRaw
-      : "standard") as Plan;
-
+    const plan: Plan = (["basic", "standard", "premium", "mystery"].includes(planRaw) ? planRaw : "standard") as Plan;
     const bundle: Bundle = bundleRaw === "duo" ? "duo" : "single";
 
-    // ✅ 只允許 Standard/Premium 用 DUO；其他一律降回 single
-    const duoAllowed = bundle === "duo" && (plan === "standard" || plan === "premium");
+    // Mystery 不支援 Duo
+    const finalBundle: Bundle = (bundle === "duo" && plan !== "mystery") ? "duo" : "single";
 
-    // ✅ DUO 必須真係有第二份 metadata，否則降回 single
-    const hasSecondPick =
-      typeof body?.theme2 === "string" &&
-      typeof body?.label2 === "string" &&
-      String(body.theme2).trim() !== "" &&
-      String(body.label2).trim() !== "";
-
-    const finalBundle: Bundle = duoAllowed && hasSecondPick ? "duo" : "single";
-
-    // ✅ 第一份 metadata
+    // 讀取前端傳來的資料
     const theme = safeStr(body?.theme);
     const label = safeStr(body?.label);
     const lang = safeStr(body?.lang);
     const style = safeStr(body?.style);
-    const styleLetter = safeStr(body?.styleLetter);
-    const fontId = safeStr(body?.fontId);
-    const type = safeStr(body?.type);
-
-    // ✅ 第二份（DUO）
+    
+    // Duo 第二組資料
     const theme2 = finalBundle === "duo" ? safeStr(body?.theme2) : "";
     const label2 = finalBundle === "duo" ? safeStr(body?.label2) : "";
     const lang2 = finalBundle === "duo" ? safeStr(body?.lang2) : "";
     const style2 = finalBundle === "duo" ? safeStr(body?.style2) : "";
-    const styleLetter2 = finalBundle === "duo" ? safeStr(body?.styleLetter2) : "";
-    const fontId2 = finalBundle === "duo" ? safeStr(body?.fontId2) : "";
-    const type2 = finalBundle === "duo" ? safeStr(body?.type2) : "";
-
-    // ✅ optional debug fields
-    const layout = safeStr(body?.layout, 60);
-    const char = safeStr(body?.char, 260);
-    const priceShown = safeStr(String(body?.priceShown ?? ""), 30);
 
     const baseUrl = getBaseUrl(req);
-
-    const successUrl =
-      `${baseUrl}/success?plan=${encodeURIComponent(plan)}` +
-      `&bundle=${encodeURIComponent(finalBundle)}` +
-      `&order_id={CHECKOUT_SESSION_ID}`;
-
+    const successUrl = `${baseUrl}/success?plan=${encodeURIComponent(plan)}&order_id={CHECKOUT_SESSION_ID}`;
     const cancelUrl = `${baseUrl}/customize?plan=${encodeURIComponent(plan)}&canceled=1`;
 
-    // ✅ Line item
-    if (finalBundle === "duo" && !DUO_USD[plan]) {
-      return NextResponse.json(
-        { error: "DUO price not configured for this plan." },
-        { status: 400 }
-      );
-    }
-
-    const lineItem: Stripe.Checkout.SessionCreateParams.LineItem =
-      finalBundle === "single"
-        ? { price: PRICE_ID[plan], quantity: 1 }
-        : {
+    // 計算價格
+    let priceData: Stripe.Checkout.SessionCreateParams.LineItem;
+    if (finalBundle === "duo" && DUO_USD[plan]) {
+        priceData = {
             quantity: 1,
             price_data: {
               currency: "usd",
-              unit_amount: Math.round((DUO_USD[plan] || 0) * 100),
+              unit_amount: Math.round((DUO_USD[plan]!) * 100),
               product_data: {
-                name:
-                  plan === "standard"
-                    ? "Tattoo Clarity – Standard Plan (DUO)"
-                    : "Tattoo Clarity – Premium Plan (DUO)",
-                description:
-                  plan === "premium"
-                    ? "2 sets (up to 4 characters). Includes PNG + SVG."
-                    : "2 sets (up to 4 characters). Includes PNG.",
-              },
-            },
-          };
-
-    // ✅ guard unit_amount
-    if (
-      finalBundle === "duo" &&
-      (lineItem as any)?.price_data?.unit_amount &&
-      (lineItem as any).price_data.unit_amount <= 0
-    ) {
-      return NextResponse.json(
-        { error: "Invalid DUO unit_amount. Check DUO_USD config." },
-        { status: 400 }
-      );
+                name: `Tattoo Clarity – ${plan.charAt(0).toUpperCase() + plan.slice(1)} Plan (DUO)`,
+                description: "2 sets included."
+              }
+            }
+        };
+    } else {
+        priceData = { price: PRICE_ID[plan], quantity: 1 };
     }
 
-    const isMystery = plan === "mystery";
+    // ✅ Mystery 核心邏輯：在這裡抽圖！
+    let mysteryFile = "";
+    if (plan === "mystery") {
+        const picked = pickMysteryFile();
+        // 如果抽不到（例如清單空的），就給一個預設圖保命
+        mysteryFile = picked || "mystery_mystery_MYSTERY.png";
+    }
 
-    // ✅ Mystery Random: 抽一張 standard_png 檔（每一單抽一次，之後固定）
-    const mysteryPicked = isMystery ? pickMysteryFileFromManifest() : null;
-
-    // ✅ fallback file（救火固定檔）
-    const mysteryFallback = "mystery/mystery_mystery_MYSTERY.png";
-
+    // 建立 Stripe Session
     const session = await stripe.checkout.sessions.create({
       mode: "payment",
       payment_method_types: ["card"],
-      customer_creation: "if_required",
-      line_items: [lineItem],
+      line_items: [priceData],
       success_url: successUrl,
       cancel_url: cancelUrl,
-
       metadata: {
-        // Stripe metadata 必須係 string
-        plan: String(plan),
-        bundle: String(finalBundle),
-        qty: finalBundle === "duo" ? "2" : "1",
+        plan,
+        bundle: finalBundle,
+        // 如果是 Mystery，把抽到的檔名存進去；否則存原本的選項
+        theme: plan === "mystery" ? "mystery" : theme,
+        label: plan === "mystery" ? "mystery" : label,
+        lang: plan === "mystery" ? "mystery" : lang,
+        style: plan === "mystery" ? "mystery" : style,
+        
+        // Duo Metadata
+        theme2, label2, lang2, style2,
 
-        // First pick
-        theme: isMystery ? "mystery" : theme,
-        label: isMystery ? "mystery" : label,
-        lang: isMystery ? "mystery" : lang,
-        style: isMystery ? "mystery" : style,
-        styleLetter: isMystery ? "mystery" : styleLetter,
-        fontId: isMystery ? "mystery" : fontId,
-        type: isMystery ? "mystery" : type,
-
-        // Second pick (duo only)
-        theme2: finalBundle === "duo" && !isMystery ? theme2 : "",
-        label2: finalBundle === "duo" && !isMystery ? label2 : "",
-        lang2: finalBundle === "duo" && !isMystery ? lang2 : "",
-        style2: finalBundle === "duo" && !isMystery ? style2 : "",
-        styleLetter2: finalBundle === "duo" && !isMystery ? styleLetter2 : "",
-        fontId2: finalBundle === "duo" && !isMystery ? fontId2 : "",
-        type2: finalBundle === "duo" && !isMystery ? type2 : "",
-
-        // ✅ Mystery delivery fields (IMPORTANT)
-        // download page 只要讀 md.mystery_file 去派檔
-        mystery_planFolder: isMystery ? "standard_png" : "",
-        mystery_file: isMystery ? String(mysteryPicked || mysteryFallback) : "",
-
-        // Optional debug fields
-        layout,
-        char,
-        priceShown,
+        // ✅ 關鍵：把抽到的檔名存起來！
+        mystery_file: mysteryFile, 
+        mystery_planFolder: "mystery_png" // 告訴下載頁去哪個資料夾找
       },
     });
 
-    return NextResponse.json({ url: session.url, id: session.id }, { status: 200 });
+    return NextResponse.json({ url: session.url, id: session.id });
   } catch (err: any) {
     console.error("Checkout error:", err);
-    return NextResponse.json(
-      { error: err?.message || "Unknown error" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: err?.message || "Error" }, { status: 500 });
   }
 }
