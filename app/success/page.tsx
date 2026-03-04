@@ -35,7 +35,10 @@ function normalizeBundle(input: string | null): Bundle {
 function SuccessContent() {
   const sp = useSearchParams();
 
+  // ✅ 新版：用 session_id（來自 success_url 的 {CHECKOUT_SESSION_ID}）
   const sessionId = sp.get("session_id") || "";
+
+  // ✅ 兼容舊版（你之前用 order_id）
   const legacyOrderId = sp.get("order_id") || "";
 
   const plan = normalizePlan(sp.get("plan"));
@@ -45,6 +48,7 @@ function SuccessContent() {
   const [email, setEmail] = useState<string | null>(null);
   const [loading, setLoading] = useState<boolean>(!!sessionId);
 
+  // ✅ A方案核心：用 session_id call 你自己 API -> retrieve stripe session -> 取 email
   useEffect(() => {
     if (!sessionId) {
       setLoading(false);
@@ -62,6 +66,7 @@ function SuccessContent() {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ session_id: sessionId }),
+          cache: "no-store",
         });
 
         const data = await res.json().catch(() => ({}));
@@ -102,11 +107,9 @@ function SuccessContent() {
   }, [plan, bundle]);
 
   /**
-   * ✅ 關鍵修復：
-   * 你的 download page 仍然用 order_id 驗證（/api/order/verify 之類）。
-   * 所以我而家「同時」帶：
-   * - order_id = sessionId   （讓舊 download flow 立即可用）
-   * - session_id = sessionId （讓你之後新 flow 也可用）
+   * ✅ 最穩陣：Go to Download 一定要帶 query
+   * - order_id = sessionId   （舊 download flow 立即可用）
+   * - session_id = sessionId （新 flow 也可用）
    * - plan / bundle          （舊頁面如果要用到也有）
    */
   const downloadHref = sessionId
@@ -193,6 +196,7 @@ function SuccessContent() {
       <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
         <Link
           href={downloadHref}
+          prefetch={false}
           style={{
             display: "inline-block",
             padding: "12px 16px",
@@ -210,6 +214,7 @@ function SuccessContent() {
 
         <Link
           href="/"
+          prefetch={false}
           style={{
             display: "inline-block",
             padding: "12px 16px",
