@@ -2,11 +2,9 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  experimental: {
-    outputFileTracingIncludes: {
-      "/api/download": ["./storage/designs/**/*"],
-    },
+  outputFileTracingIncludes: {
+    "/api/download": ["./storage/designs/**/*"],
   },
-};
+} as any;
 
 export default nextConfig;
