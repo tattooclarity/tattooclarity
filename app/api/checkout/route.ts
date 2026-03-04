@@ -45,13 +45,17 @@ function getBaseUrl(req: Request) {
 }
 
 function safeStr(v: any, maxLen = 180) {
-  const s = typeof v === "string" ? v : "";
+  const s = typeof v === "string" ? v : v == null ? "" : String(v);
   return s.length > maxLen ? s.slice(0, maxLen) : s;
 }
 
 /**
  * ✅ Mystery：從 manifest random 抽一個 standard_png 檔案
- * 返還：例如 "love/love_phrase_tc_SA.png"
+ * manifest 可接受兩種格式：
+ * 1) ["mystery/xxx.png", "love/xxx.png", ...]
+ * 2) { "files": ["mystery/xxx.png", ...] }
+ *
+ * 返還：例如 "love/love_phrase_tc_SA.png" 或 "mystery/xxx.png"
  */
 function pickMysteryFileFromManifest(): string | null {
   try {
@@ -65,9 +69,14 @@ function pickMysteryFileFromManifest(): string | null {
     if (!fs.existsSync(manifestPath)) return null;
 
     const raw = fs.readFileSync(manifestPath, "utf-8");
-    const parsed = JSON.parse(raw) as { files?: string[] };
+    const parsed = JSON.parse(raw) as any;
 
-    const files = Array.isArray(parsed?.files) ? parsed.files : [];
+    const files: string[] = Array.isArray(parsed)
+      ? parsed
+      : Array.isArray(parsed?.files)
+      ? parsed.files
+      : [];
+
     if (!files.length) return null;
 
     // crypto.randomInt is secure & available in node
@@ -151,9 +160,7 @@ export async function POST(req: Request) {
       `&bundle=${encodeURIComponent(finalBundle)}` +
       `&order_id={CHECKOUT_SESSION_ID}`;
 
-    const cancelUrl =
-      `${baseUrl}/customize?plan=${encodeURIComponent(plan)}` +
-      `&canceled=1`;
+    const cancelUrl = `${baseUrl}/customize?plan=${encodeURIComponent(plan)}&canceled=1`;
 
     // ✅ Line item
     if (finalBundle === "duo" && !DUO_USD[plan]) {
@@ -198,10 +205,10 @@ export async function POST(req: Request) {
 
     const isMystery = plan === "mystery";
 
-    // ✅ Mystery Random: 抽一張 standard_png 檔
+    // ✅ Mystery Random: 抽一張 standard_png 檔（每一單抽一次，之後固定）
     const mysteryPicked = isMystery ? pickMysteryFileFromManifest() : null;
 
-    // ✅ fallback file（你而家救火固定檔）
+    // ✅ fallback file（救火固定檔）
     const mysteryFallback = "mystery/mystery_mystery_MYSTERY.png";
 
     const session = await stripe.checkout.sessions.create({
@@ -213,8 +220,10 @@ export async function POST(req: Request) {
       cancel_url: cancelUrl,
 
       metadata: {
-        plan,
-        bundle: finalBundle,
+        // Stripe metadata 必須係 string
+        plan: String(plan),
+        bundle: String(finalBundle),
+        qty: finalBundle === "duo" ? "2" : "1",
 
         // First pick
         theme: isMystery ? "mystery" : theme,
@@ -235,9 +244,9 @@ export async function POST(req: Request) {
         type2: finalBundle === "duo" && !isMystery ? type2 : "",
 
         // ✅ Mystery delivery fields (IMPORTANT)
-        // download 端只要讀呢兩個就可以派檔
+        // download page 只要讀 md.mystery_file 去派檔
         mystery_planFolder: isMystery ? "standard_png" : "",
-        mystery_file: isMystery ? (mysteryPicked || mysteryFallback) : "",
+        mystery_file: isMystery ? String(mysteryPicked || mysteryFallback) : "",
 
         // Optional debug fields
         layout,

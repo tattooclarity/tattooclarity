@@ -180,7 +180,7 @@ function DownloadContent() {
     toInt(md.qty) ||
     toInt(md.quantity) ||
     toInt(sp.get("qty")) ||
-    (toBool(md.duo) ? 2 : 0) ||
+    (toBool((md as any).duo) ? 2 : 0) ||
     (toLower((md as any).bundle) === "duo" ? 2 : 0) ||
     (toBool(sp.get("duo")) ? 2 : 0) ||
     1;
@@ -212,7 +212,8 @@ function DownloadContent() {
   const missingDuoSecond = isDuo && !label2;
 
   /**
-   * ✅ Download list (Mystery 固定 fallback + Premium SVG + DUO)
+   * ✅ Download list (✅ Mystery: 讀 Stripe metadata 的 mystery_file 隨機結果)
+   * checkout route 已經把每單抽到的檔名寫入 md.mystery_file
    */
   const downloads = useMemo(() => {
     const list: Array<{ key: string; label: string; href: string; className: string }> = [];
@@ -226,8 +227,11 @@ function DownloadContent() {
     let pngLabel1 = "";
 
     if (plan === "mystery") {
-      // ✅ 固定 fallback 檔（你要真正放到 storage/designs/standard_png/mystery/ 呢度）
-      filePath1 = "mystery/mystery_mystery_MYSTERY.png";
+      // ✅ 重要：優先用 Stripe metadata 的 random 結果
+      // - 期望格式: "love/love_phrase_tc_SA.png" 或 "mystery/xxx.png"
+      // - fallback: 你救火固定檔
+      const picked = toStr((md as any).mystery_file).trim();
+      filePath1 = picked || "mystery/mystery_mystery_MYSTERY.png";
       pngLabel1 = "Download Mystery PNG (Standard Quality)";
     } else {
       baseName1 = `${label}${isPhrase ? "_phrase" : ""}_${lang}_${style}`;
@@ -287,7 +291,21 @@ function DownloadContent() {
     }
 
     return list;
-  }, [plan, theme, label, lang, style, isPhrase, isDuo, theme2, label2, lang2, style2, isPhrase2]);
+  }, [
+    plan,
+    theme,
+    label,
+    lang,
+    style,
+    isPhrase,
+    isDuo,
+    theme2,
+    label2,
+    lang2,
+    style2,
+    isPhrase2,
+    md,
+  ]);
 
   return (
     <div className="page">
@@ -360,7 +378,9 @@ function DownloadContent() {
                 If you need access again, please contact support with your order reference.
               </div>
               <a
-                href={mailtoSupport(`${invalidLink ? "Invalid Download Link" : "Expired Download"} - Order ${orderId}`)}
+                href={mailtoSupport(
+                  `${invalidLink ? "Invalid Download Link" : "Expired Download"} - Order ${orderId}`
+                )}
                 className="btnOutline"
                 style={{ marginTop: 12 }}
               >
@@ -391,10 +411,14 @@ function DownloadContent() {
                 </a>
               ))}
 
-              {plan === "basic" && <div className="hint">*Transparent background is available in Standard/Premium.</div>}
+              {plan === "basic" && (
+                <div className="hint">*Transparent background is available in Standard/Premium.</div>
+              )}
               {plan === "standard" && <div className="hint">*Vector SVG is only available in Premium.</div>}
               {plan === "mystery" && (
-                <div className="hint">*Mystery delivers a fixed Standard-quality PNG from the Mystery folder.</div>
+                <div className="hint">
+                  *Mystery delivers a randomly selected Standard-quality PNG (locked to your order).
+                </div>
               )}
             </>
           )}
@@ -613,12 +637,24 @@ export default function DownloadPage() {
           border-radius: 12px;
           font-weight: 800;
           font-size: 15px;
-          background: linear-gradient(180deg, rgba(202, 163, 74, 0.98), rgba(202, 163, 74, 0.82));
+          background: linear-gradient(
+            180deg,
+            rgba(202, 163, 74, 0.98),
+            rgba(202, 163, 74, 0.82)
+          );
           color: #1b1b1b;
           box-shadow: 0 8px 24px rgba(202, 163, 74, 0.25);
           transition: all 0.2s ease;
           margin-bottom: 12px;
           text-align: center;
+        }
+        .btnGold:hover {
+          transform: translateY(-2px);
+          box-shadow: 0 12px 32px rgba(202, 163, 74, 0.35);
+          filter: brightness(1.03);
+        }
+        .btnGold:active {
+          transform: translateY(1px);
         }
         .btnOutline {
           width: 100%;
@@ -637,6 +673,11 @@ export default function DownloadPage() {
           transition: all 0.2s;
           text-align: center;
           margin-bottom: 12px;
+        }
+        .btnOutline:hover {
+          border-color: rgba(0, 0, 0, 0.3);
+          color: #111;
+          background: #fafafa;
         }
         .hint {
           font-size: 12px;
@@ -657,6 +698,10 @@ export default function DownloadPage() {
           font-weight: 800;
           text-decoration: none;
         }
+        .supportLink:hover {
+          color: #111;
+          text-decoration: underline;
+        }
         .homeLink {
           display: inline-block;
           margin-top: 24px;
@@ -665,6 +710,10 @@ export default function DownloadPage() {
           color: rgba(0, 0, 0, 0.35);
           text-transform: uppercase;
           letter-spacing: 0.05em;
+          transition: color 0.2s;
+        }
+        .homeLink:hover {
+          color: var(--ink);
         }
         @media (max-width: 720px) {
           .card {
@@ -677,7 +726,9 @@ export default function DownloadPage() {
         }
       `}</style>
 
-      <Suspense fallback={<div style={{ textAlign: "center", padding: "40px" }}>Loading downloads...</div>}>
+      <Suspense
+        fallback={<div style={{ textAlign: "center", padding: "40px" }}>Loading downloads...</div>}
+      >
         <DownloadContent />
       </Suspense>
     </>
