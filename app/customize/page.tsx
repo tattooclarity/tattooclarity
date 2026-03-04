@@ -208,6 +208,7 @@ const ARM_CLICKS_TO_HIDE = 3;
 const HIDE_AFTER_MS = 5000;
 
 // ✅ FIXED 1: Safer slugify function (use hyphens, strip others)
+// e.g. "True Qi" -> "true-qi", "Prime" -> "prime"
 const toSlug = (s: string) =>
   String(s || '')
     .trim()
@@ -223,6 +224,7 @@ const pickToMeta = (p: PickChoice) => {
   const letter = (p.fontId.match(/-(A|B|C)$/i)?.[1] || 'A').toUpperCase();
   
   // Backend often prefers just "A" or "B", but frontend might use "SA"/"SB".
+  // We send BOTH to be 100% safe.
   const style = `S${letter}`;   // Legacy support: "SA", "SB"
   const styleLetter = letter;   // ✅ Backend safe: "A", "B", "C"
   
@@ -607,9 +609,9 @@ function CustomizeContent() {
       theme: isMystery ? 'mystery' : (m1?.theme || ''),
       label: isMystery ? 'mystery' : (m1?.label || ''),
       lang:  isMystery ? 'mystery' : (m1?.lang  || ''),
-      style: isMystery ? 'mystery' : (m1?.style || ''),            // SA, SB
+      style: isMystery ? 'mystery' : (m1?.style || ''),           // SA, SB
       styleLetter: isMystery ? 'mystery' : (m1?.styleLetter || ''), // A, B, C (Backend preferred)
-      fontId: isMystery ? 'mystery' : (m1?.fontId || ''),          // raw fontId
+      fontId: isMystery ? 'mystery' : (m1?.fontId || ''),         // raw fontId
       type:  isMystery ? 'mystery' : (m1?.type  || ''),
 
       // ✅ DUO 第二份 (Only if bundle='duo' AND we have 2 picks)
@@ -773,6 +775,21 @@ function CustomizeContent() {
         .mobileBreak { display: none !important; }
         @media (max-width: 900px) { 
           .mobileBreak { display: block !important; height: 0 !important; }
+        }
+
+        /* ✅ FIXED 7: Prevent overlapping tip text on mobile */
+        .tipPopup {
+          position: absolute;
+          top: 2px;
+          right: 145px;
+        }
+        @media (max-width: 640px) {
+          .tipPopup {
+            position: static !important;
+            width: 100%;
+            justify-content: flex-end;
+            margin-top: 6px;
+          }
         }
 
         @font-face {
@@ -1558,7 +1575,7 @@ function CustomizeContent() {
       <div className="previewCol" style={{ display: 'flex', flexDirection: 'column', gap: 24, position: 'sticky', top: 20 }}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', position: 'relative' }}>
+            <div className="previewHeader" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', position: 'relative', flexWrap: 'wrap' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                 <span style={{ fontSize: 13, fontWeight: 800, color: '#111' }}>Live Preview</span>
               </div>
@@ -1584,10 +1601,8 @@ function CustomizeContent() {
 
               {tipMode !== 'hidden' && (
                 <div
+                  className="tipPopup"
                   style={{
-                    position: 'absolute',
-                    top: 2,
-                    right: 145,
                     opacity: (tipMode === 'invite' && !showAdjust) || (tipMode === 'howto' && showAdjust) ? 1 : 0,
                     pointerEvents: 'none',
                     transition: 'opacity 0.8s ease',
