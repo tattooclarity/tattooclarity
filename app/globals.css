@@ -1,0 +1,265 @@
+/* =========================================================
+   TattooClarity — globals.css (FULL)
+   Works with your current Home Page classes:
+   wrap / header / headerInner / brand / footer / footerGrid / faq / priceCard etc.
+   ========================================================= */
+
+/* ✅ Tailwind base */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ✅ Mobile-only line breaks */
+.mobileOnlyBreak {
+  display: none;
+}
+@media (max-width: 520px) {
+  .mobileOnlyBreak {
+    display: block;
+    height: 6px;
+  }
+}
+
+/* ===== Fonts (your files) ===== */
+@font-face {
+  font-family: "NotoSansTC";
+  src: url("/fonts/NotoSans-TC.ttf") format("truetype");
+  font-weight: 400 900;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "NotoSansSC";
+  src: url("/fonts/NotoSans-SC.ttf") format("truetype");
+  font-weight: 400 900;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "LXGWWenKaiTC";
+  src: url("/fonts/LXGWWenKai-TC.ttf") format("truetype");
+  font-weight: 400 900;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "LXGWWenKaiSC";
+  src: url("/fonts/LXGWWenKai-SC.ttf") format("truetype");
+  font-weight: 400 900;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "MaShanZheng";
+  src: url("/fonts/MaShanZheng-SC.ttf") format("truetype");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "OpenHuninn";
+  src: url("/fonts/jf-openhuninn-TC.ttf") format("truetype");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* =========================================================
+   Base tokens (match your page style)
+   ========================================================= */
+:root {
+  --bg: #fbf6ee;
+  --card: #ffffff;
+  --ink: #111;
+  --muted: rgba(0, 0, 0, 0.62);
+  --border: rgba(0, 0, 0, 0.08);
+
+  --gold: #caa34a;
+  --gold-antique: #b08d35;
+  --red: #d9534f;
+
+  --shadow: 0 12px 35px rgba(0, 0, 0, 0.06);
+  --radius: 24px;
+}
+
+/* ✅ global reset */
+* { box-sizing: border-box; }
+html, body { padding: 0; margin: 0; }
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-inter, Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif);
+  -webkit-font-smoothing: antialiased;
+}
+a { color: inherit; text-decoration: none; }
+button, input, select, textarea { font: inherit; color: inherit; }
+
+/* ✅ reduce motion */
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation: none !important;
+    transition: none !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* =========================================================
+   Layout containers (your code uses .page and .wrap)
+   ========================================================= */
+.page { min-height: 100vh; }
+
+/* ✅ Core centered container */
+.wrap {
+  max-width: 1200px;
+  width: 100%;
+  margin: 0 auto;
+  padding: 0 22px;
+}
+
+/* ✅ Anchor spacing (you use #pricing, #fonts) */
+#pricing, #fonts { scroll-margin-top: 90px; }
+
+/* =========================================================
+   Header (your Home Page uses .header, .headerInner, .brand)
+   ========================================================= */
+.header {
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  background: rgba(251, 246, 238, 0.88);
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid var(--border);
+}
+
+.headerInner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 0;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 180px;
+}
+
+.brand img {
+  height: 60px;
+  width: auto;
+  display: block;
+}
+
+/* =========================================================
+   Cards / Grids shared
+   (so Compare / Pricing / FAQ auto-center nicely)
+   ========================================================= */
+.compareGrid3,
+.priceGrid {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(3, 1fr);
+}
+
+.compareCard,
+.priceCard,
+.faqItem {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.03);
+}
+
+/* FAQ container */
+.faq {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-width: 860px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+/* =========================================================
+   Footer (your code uses .footer, .footerGrid, .footerLinks)
+   ========================================================= */
+.footer {
+  border-top: 1px solid var(--border);
+  padding: 30px 0 20px;
+  background: var(--bg);
+}
+
+.footerGrid {
+  display: grid;
+  grid-template-columns: 1fr 1.4fr 1fr;
+  gap: 14px;
+  align-items: center;
+}
+
+.footerLinks {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 16px;
+  font-size: 12px;
+  font-weight: 900;
+  color: #141414;
+  margin-bottom: 8px;
+}
+
+.footerContactBtn {
+  background: none;
+  border: none;
+  padding: 0;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 900;
+  color: #141414;
+  cursor: pointer;
+  transition: color 0.2s;
+}
+.footerContactBtn:hover { color: var(--gold); }
+
+/* =========================================================
+   Mobile responsive (center everything)
+   ========================================================= */
+@media (max-width: 980px) {
+  .wrap { padding: 0 18px; }
+
+  .headerInner {
+    padding: 10px 0;
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+
+  .brand { min-width: 0; }
+  .brand img { height: 44px; max-width: 180px; }
+
+  .compareGrid3,
+  .priceGrid {
+    grid-template-columns: 1fr;
+    justify-items: center;
+  }
+
+  .compareCard,
+  .priceCard {
+    width: 100%;
+    max-width: 560px;
+  }
+
+  .footerGrid {
+    grid-template-columns: 1fr;
+    text-align: center;
+  }
+
+  .footerLinks {
+    flex-wrap: wrap;
+  }
+}
+
+@media (max-width: 480px) {
+  .wrap { padding: 0 16px; }
+  .brand img { height: 40px; max-width: 150px; }
+}
