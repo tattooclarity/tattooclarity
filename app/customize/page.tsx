@@ -207,21 +207,24 @@ const PACKAGE_DATA: Record<
 const ARM_CLICKS_TO_HIDE = 3;
 const HIDE_AFTER_MS = 5000;
 
+// ✅ FIXED 1: Safer slugify function (use hyphens, strip others)
 const toSlug = (s: string) =>
   String(s || '')
     .trim()
     .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '');
+    .replace(/[^a-z0-9]+/g, '-') // Replace spaces/symbols with hyphen
+    .replace(/^-+|-+$/g, '');    // Remove leading/trailing hyphens
 
+// ✅ FIXED 2: Granular metadata extraction
 const pickToMeta = (p: PickChoice) => {
-  const theme = p.themeId;
-  const label = toSlug(p.option.label);
+  const theme = p.themeId;                 // e.g. "dragon"
+  const label = toSlug(p.option.label);    // e.g. "flying"
   const lang = p.script === 'simplified' ? 'sc' : 'tc';
   const letter = (p.fontId.match(/-(A|B|C)$/i)?.[1] || 'A').toUpperCase();
   
-  const style = `S${letter}`;
-  const styleLetter = letter;
+  const style = `S${letter}`;   // Legacy support: "SA", "SB"
+  const styleLetter = letter;   // ✅ Backend safe: "A", "B", "C"
+  
   const type = p.usePhrase ? 'phrase' : 'single';
   
   return { 
@@ -229,9 +232,9 @@ const pickToMeta = (p: PickChoice) => {
     label, 
     lang, 
     style, 
-    styleLetter,
+    styleLetter, // New field
     type,
-    fontId: p.fontId
+    fontId: p.fontId // Also useful
   };
 };
 
@@ -310,7 +313,9 @@ function CustomizeContent() {
   const unitPrice = detail?.price || 19;
   const duoPrice = detail?.duoPrice ?? 0;
 
+  // ✅ 更強版本：計算 save 只係 duo 先有
   const saveAmt = canDuo && bundle === 'duo' ? unitPrice * 2 - duoPrice : 0;
+
   const displayPrice = canDuo && bundle === 'duo' ? duoPrice : unitPrice;
 
   const availableThemes = useMemo(() => {
@@ -746,13 +751,8 @@ function CustomizeContent() {
           --red: #d9534f;
         }
         @keyframes gentleBounceHorizontal {
-          0%,
-          100% {
-            transform: translateX(0);
-          }
-          50% {
-            transform: translateX(4px);
-          }
+          0%, 100% { transform: translateX(0); }
+          50% { transform: translateX(4px); }
         }
 
         /* ===== Mobile Break ===== */
@@ -764,8 +764,8 @@ function CustomizeContent() {
         /* ✅ Prevent overlapping tip text on mobile */
         .tipPopup {
           position: absolute;
-          top: 2px;
-          right: 145px;
+          top: calc(100% + 4px);
+          right: 0;
         }
         @media (max-width: 640px) {
           .tipPopup {
@@ -813,31 +813,25 @@ function CustomizeContent() {
             grid-template-columns: 1fr !important;
             gap: 24px !important;
           }
-
           .previewCol {
             position: static !important;
             top: auto !important;
           }
-
           .plansRow {
             flex-wrap: wrap !important;
             gap: 10px !important;
           }
-
           .plansRow > button {
             flex: 1 1 calc(50% - 10px) !important;
           }
-
           .planStandard {
             transform: none !important;
           }
         }
-
         @media (max-width: 520px) {
           .plansRow > button {
             flex: 1 1 100% !important;
           }
-
           .previewGrid {
             grid-template-columns: 1fr !important;
           }
@@ -1640,8 +1634,8 @@ function CustomizeContent() {
               }}
             >
               AI Mockup • Results
-              <br className="mobileBreak" />
-              may vary
+<br className="mobileBreak" />
+{' '}may vary
             </div>
 
             {/* Male */}
