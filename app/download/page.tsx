@@ -29,7 +29,7 @@ function toInt(v: any) {
   return Number.isFinite(n) ? n : 0;
 }
 
-// ✅ plan normalize（保持你原本 plan，不硬加 duo 當 plan）
+// ✅ plan normalize
 function normalizePlan(input: any): Plan {
   const p = toLower(input || "standard");
   if (p === "basic") return "basic";
@@ -48,6 +48,9 @@ function planLabel(plan: Plan, isDuo: boolean) {
       : plan === "premium"
       ? "Premium"
       : "Mystery";
+
+  // ✅ Mystery 永遠唔顯示 DUO
+  if (plan === "mystery") return base;
   return isDuo ? `${base} (DUO)` : base;
 }
 
@@ -76,10 +79,13 @@ function includesText(plan: Plan, isDuo: boolean) {
       ? "2× 3000×3000px Transparent Background PNG + 2× Vector SVG"
       : "3000×3000px Transparent Background PNG + Vector SVG";
   }
-  if (plan === "standard" || plan === "mystery") {
+  if (plan === "standard") {
     return isDuo
       ? "2× 3000×3000px Transparent Background PNG (Print-Ready)"
       : "3000×3000px Transparent Background PNG (Print-Ready)";
+  }
+  if (plan === "mystery") {
+    return "3000×3000px Transparent Background PNG (Standard Quality)";
   }
   return isDuo
     ? "2× 3000×3000px White Background PNG (Print-Ready)"
@@ -111,7 +117,7 @@ function DownloadContent() {
   // ✅ order_id 必須存在
   const orderId = sp.get("order_id") || "UNKNOWN";
 
-  // URL fallback（如果 metadata 無提供）
+  // URL fallback
   const urlPlan = normalizePlan(sp.get("plan"));
   const urlTheme = sp.get("theme") || "balance";
   const urlLabel = sp.get("label") || "harmony";
@@ -119,7 +125,7 @@ function DownloadContent() {
   const urlStyle = (sp.get("style") || "SA").toUpperCase();
   const urlType = (sp.get("type") || "single").toLowerCase(); // single/phrase
 
-  // ✅ DUO 第二份 URL fallback（如果你有傳）
+  // ✅ DUO 第二份 URL fallback
   const urlTheme2 = sp.get("theme2") || "";
   const urlLabel2 = sp.get("label2") || "";
   const urlLang2 = (sp.get("lang2") || "").toLowerCase();
@@ -135,9 +141,10 @@ function DownloadContent() {
     async function run() {
       try {
         setLoading(true);
-        const res = await fetch(`/api/order/verify?order_id=${encodeURIComponent(orderId)}`, {
-          cache: "no-store",
-        });
+        const res = await fetch(
+          `/api/order/verify?order_id=${encodeURIComponent(orderId)}`,
+          { cache: "no-store" }
+        );
         const data = (await res.json()) as VerifyResponse;
         if (!alive) return;
         setVerify(data);
@@ -164,40 +171,35 @@ function DownloadContent() {
   const paid = !!verify?.paid;
   const ok = !!verify?.ok;
 
-  // ✅ 最終資料：優先用 Stripe metadata
+  // ✅ 最終資料
   const md = verify?.metadata || {};
   const plan = normalizePlan(md.plan || urlPlan);
 
-  // ✅ DUO 判斷：支援多種 metadata/URL 寫法（你可以任用一種）
-  // - md.qty / md.quantity = "2"
-  // - md.duo = "true"/"1"
-  // - md.bundle = "duo"
-  // - URL ?qty=2 或 ?duo=1
-  const qty =
+  // ✅ DUO 判斷（但 Mystery 強制唔用 DUO）
+  const qtyRaw =
     toInt(md.qty) ||
     toInt(md.quantity) ||
     toInt(sp.get("qty")) ||
     (toBool(md.duo) ? 2 : 0) ||
-    (toLower(md.bundle) === "duo" ? 2 : 0) ||
+    (toLower((md as any).bundle) === "duo" ? 2 : 0) ||
     (toBool(sp.get("duo")) ? 2 : 0) ||
     1;
 
-  const isDuo = qty >= 2;
+  const isDuo = plan === "mystery" ? false : qtyRaw >= 2;
 
-  // ✅ 你 checkout metadata 之前用 theme/script/fonts/char
-  // 下載頁想用 label/lang/style/type，先用 md（有就用），無就 fallback URL
   const theme = (md.theme || urlTheme) || "balance";
   const label = (md.label || urlLabel) || "harmony";
   const lang = ((md.lang || urlLang) || "tc").toLowerCase();
   const style = ((md.style || urlStyle) || "SA").toUpperCase();
   const isPhrase = ((md.type || urlType) || "single") === "phrase";
 
-  // ✅ DUO 第二份資料（一定要至少有 label2，否則無法生成第二個檔案路徑）
+  // ✅ DUO 第二份資料
   const theme2 = (md.theme2 || urlTheme2 || theme) as string;
   const label2 = (md.label2 || urlLabel2 || "") as string;
   const lang2 = (((md.lang2 || urlLang2) || lang) as string).toLowerCase();
   const style2 = (((md.style2 || urlStyle2) || style) as string).toUpperCase();
-  const isPhrase2 = (((md.type2 || urlType2) || "single") as string).toLowerCase() === "phrase";
+  const isPhrase2 =
+    (((md.type2 || urlType2) || "single") as string).toLowerCase() === "phrase";
 
   const days = planDays(plan);
 
@@ -210,28 +212,40 @@ function DownloadContent() {
   const missingDuoSecond = isDuo && !label2;
 
   /**
-   * ✅ DUO 修正：
-   * - Standard DUO = 顯示 2 個 PNG download（兩條不同 file path）
-   * - 如果 second set 冇傳（label2 空），就提示聯絡 support（避免下載同一個檔）
+   * ✅ Download list (Mystery 固定 fallback + Premium SVG + DUO)
    */
   const downloads = useMemo(() => {
     const list: Array<{ key: string; label: string; href: string; className: string }> = [];
 
-    const baseName1 = `${label}${isPhrase ? "_phrase" : ""}_${lang}_${style}`;
-    const filePath1 = `${theme}/${baseName1}.png`;
-
-    let pngLabel1 = "Download 3000×3000px PNG (Set 1)";
-    if (plan === "basic") pngLabel1 = "Download 3000×3000px White Background PNG (Set 1)";
-    else pngLabel1 = "Download 3000×3000px Transparent Background PNG (Set 1)";
-
-    // ✅ 下載用 plan（對應你 /api/download 的 folder key）
+    // ✅ /api/download 的 plan key（你 download route 已經 map 咗 mystery -> standard_png）
     const downloadPlan: string = plan === "premium" ? "premium_png" : plan;
 
-    const pngHref1 = `/api/download?plan=${encodeURIComponent(downloadPlan)}&file=${encodeURIComponent(filePath1)}`;
-    list.push({ key: "png1", label: pngLabel1, href: pngHref1, className: "btnGold" });
+    // --- SET 1 PNG ---
+    let baseName1 = "";
+    let filePath1 = "";
+    let pngLabel1 = "";
 
-    // ✅ DUO 第2份 PNG
-    if (isDuo && label2) {
+    if (plan === "mystery") {
+      // ✅ 固定 fallback 檔（你要真正放到 storage/designs/standard_png/mystery/ 呢度）
+      filePath1 = "mystery/mystery_mystery_MYSTERY.png";
+      pngLabel1 = "Download Mystery PNG (Standard Quality)";
+    } else {
+      baseName1 = `${label}${isPhrase ? "_phrase" : ""}_${lang}_${style}`;
+      filePath1 = `${theme}/${baseName1}.png`;
+
+      if (plan === "basic") pngLabel1 = "Download 3000×3000px White Background PNG (Set 1)";
+      else pngLabel1 = "Download 3000×3000px Transparent Background PNG (Set 1)";
+    }
+
+    list.push({
+      key: "png1",
+      label: pngLabel1,
+      href: `/api/download?plan=${encodeURIComponent(downloadPlan)}&file=${encodeURIComponent(filePath1)}`,
+      className: "btnGold",
+    });
+
+    // --- SET 2 PNG (DUO) ---
+    if (plan !== "mystery" && isDuo && label2) {
       const baseName2 = `${label2}${isPhrase2 ? "_phrase" : ""}_${lang2}_${style2}`;
       const filePath2 = `${theme2}/${baseName2}.png`;
 
@@ -239,11 +253,15 @@ function DownloadContent() {
       if (plan === "basic") pngLabel2 = "Download 3000×3000px White Background PNG (Set 2)";
       else pngLabel2 = "Download 3000×3000px Transparent Background PNG (Set 2)";
 
-      const pngHref2 = `/api/download?plan=${encodeURIComponent(downloadPlan)}&file=${encodeURIComponent(filePath2)}`;
-      list.push({ key: "png2", label: pngLabel2, href: pngHref2, className: "btnGold" });
+      list.push({
+        key: "png2",
+        label: pngLabel2,
+        href: `/api/download?plan=${encodeURIComponent(downloadPlan)}&file=${encodeURIComponent(filePath2)}`,
+        className: "btnGold",
+      });
     }
 
-    // ✅ Premium SVG（✅ 現在支援 DUO：Set 1 + Set 2）
+    // --- Premium SVG ---
     if (plan === "premium") {
       const svgPath1 = `${theme}/${baseName1}.svg`;
       const svgLabel1 = isDuo ? "Download Vector SVG (Set 1)" : "Download Vector SVG";
@@ -255,10 +273,10 @@ function DownloadContent() {
         className: "btnOutline",
       });
 
-      // ✅ 解開：Premium DUO 第二個 SVG
       if (isDuo && label2) {
         const baseName2 = `${label2}${isPhrase2 ? "_phrase" : ""}_${lang2}_${style2}`;
         const svgPath2 = `${theme2}/${baseName2}.svg`;
+
         list.push({
           key: "svg2",
           label: "Download Vector SVG (Set 2)",
@@ -335,8 +353,12 @@ function DownloadContent() {
 
           {isExpired ? (
             <div className="expiredBox">
-              <div className="expiredTitle">{invalidLink ? "Invalid download link." : "This download link has expired."}</div>
-              <div className="expiredText">If you need access again, please contact support with your order reference.</div>
+              <div className="expiredTitle">
+                {invalidLink ? "Invalid download link." : "This download link has expired."}
+              </div>
+              <div className="expiredText">
+                If you need access again, please contact support with your order reference.
+              </div>
               <a
                 href={mailtoSupport(`${invalidLink ? "Invalid Download Link" : "Expired Download"} - Order ${orderId}`)}
                 className="btnOutline"
@@ -347,26 +369,24 @@ function DownloadContent() {
             </div>
           ) : (
             <>
-              {missingDuoSecond ? (
+              {missingDuoSecond && plan !== "mystery" ? (
                 <div className="expiredBox">
                   <div className="expiredTitle">DUO purchase detected, but Set 2 data is missing.</div>
                   <div className="expiredText">
                     Please contact support with your order reference so we can resend Set 2.
                   </div>
-                  <a href={mailtoSupport(`Missing DUO Set 2 - Order ${orderId}`)} className="btnOutline" style={{ marginTop: 12 }}>
+                  <a
+                    href={mailtoSupport(`Missing DUO Set 2 - Order ${orderId}`)}
+                    className="btnOutline"
+                    style={{ marginTop: 12 }}
+                  >
                     Contact Support
                   </a>
                 </div>
               ) : null}
 
-              {downloads.map((d, idx) => (
-                <a
-                  key={d.key}
-                  href={d.href}
-                  download
-                  className={d.className}
-                  style={idx === 0 ? undefined : { marginBottom: 12 }}
-                >
+              {downloads.map((d) => (
+                <a key={d.key} href={d.href} download className={d.className}>
                   <span style={{ fontSize: 18 }}>↓</span> {d.label}
                 </a>
               ))}
@@ -374,7 +394,7 @@ function DownloadContent() {
               {plan === "basic" && <div className="hint">*Transparent background is available in Standard/Premium.</div>}
               {plan === "standard" && <div className="hint">*Vector SVG is only available in Premium.</div>}
               {plan === "mystery" && (
-                <div className="hint">*Mystery delivers a pre-made Standard-quality PNG from the Mystery folder.</div>
+                <div className="hint">*Mystery delivers a fixed Standard-quality PNG from the Mystery folder.</div>
               )}
             </>
           )}
@@ -398,7 +418,7 @@ function DownloadContent() {
 export default function DownloadPage() {
   return (
     <>
-      {/* ✅ 放喺最外層，避免你再次出現「變白底純文字」 */}
+      {/* ✅ 放喺最外層，避免再次「變白底」 */}
       <link
         href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;800&family=Inter:wght@400;500;600;700;800;900&display=swap"
         rel="stylesheet"
@@ -600,14 +620,6 @@ export default function DownloadPage() {
           margin-bottom: 12px;
           text-align: center;
         }
-        .btnGold:hover {
-          transform: translateY(-2px);
-          box-shadow: 0 12px 32px rgba(202, 163, 74, 0.35);
-          filter: brightness(1.03);
-        }
-        .btnGold:active {
-          transform: translateY(1px);
-        }
         .btnOutline {
           width: 100%;
           display: flex;
@@ -625,11 +637,6 @@ export default function DownloadPage() {
           transition: all 0.2s;
           text-align: center;
           margin-bottom: 12px;
-        }
-        .btnOutline:hover {
-          border-color: rgba(0, 0, 0, 0.3);
-          color: #111;
-          background: #fafafa;
         }
         .hint {
           font-size: 12px;
@@ -650,10 +657,6 @@ export default function DownloadPage() {
           font-weight: 800;
           text-decoration: none;
         }
-        .supportLink:hover {
-          color: #111;
-          text-decoration: underline;
-        }
         .homeLink {
           display: inline-block;
           margin-top: 24px;
@@ -662,10 +665,6 @@ export default function DownloadPage() {
           color: rgba(0, 0, 0, 0.35);
           text-transform: uppercase;
           letter-spacing: 0.05em;
-          transition: color 0.2s;
-        }
-        .homeLink:hover {
-          color: var(--ink);
         }
         @media (max-width: 720px) {
           .card {
