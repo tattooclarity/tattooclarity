@@ -35,6 +35,15 @@ function safeStr(v: any, maxLen = 180) {
   return s.length > maxLen ? s.slice(0, maxLen) : s;
 }
 
+// ✅ very light email sanity check (avoid sending obviously invalid strings to Stripe)
+function normalizeEmail(v: any) {
+  const e = safeStr(v, 254).trim().toLowerCase();
+  if (!e) return "";
+  // simple pattern; Stripe will still validate further
+  const ok = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e);
+  return ok ? e : "";
+}
+
 /**
  * ✅ 方案A：直接從 storage/designs/mystery_png 隨機抽一張 PNG
  * - 不再依賴 storage/manifests/mystery_pool.json
@@ -48,8 +57,7 @@ function pickMysteryFile(): string | null {
     const files = fs
       .readdirSync(dir)
       .filter((f) => typeof f === "string" && f.toLowerCase().endsWith(".png"))
-      // ✅ 避免抽到 .DS_Store
-      .filter((f) => !f.startsWith("."));
+      .filter((f) => !f.startsWith(".")); // ✅ avoid .DS_Store etc
 
     if (files.length === 0) return null;
 
@@ -66,7 +74,7 @@ export async function POST(req: Request) {
     const key = process.env.STRIPE_SECRET_KEY;
     if (!key) return NextResponse.json({ error: "Missing STRIPE_SECRET_KEY" }, { status: 400 });
 
-    // ✅ 建議加 apiVersion，避免 Stripe SDK 將來行為變動
+    // ✅ 建議加 apiVersion，避免 Stripe SDK 將來行為變動（可選）
     const stripe = new Stripe(key);
 
     const body = (await req.json().catch(() => ({}))) as any;
@@ -75,6 +83,9 @@ export async function POST(req: Request) {
     const bundleRaw = safeStr(body?.bundle || "single").toLowerCase();
     const plan: Plan = (["basic", "standard", "premium", "mystery"].includes(planRaw) ? planRaw : "standard") as Plan;
     const bundle: Bundle = bundleRaw === "duo" ? "duo" : "single";
+
+    // ✅ NEW: Optional email from frontend (for receipt insurance)
+    const customerEmail = normalizeEmail(body?.email);
 
     // Mystery 不支援 Duo
     const finalBundle: Bundle = bundle === "duo" && plan !== "mystery" ? "duo" : "single";
@@ -93,7 +104,6 @@ export async function POST(req: Request) {
     const label2 = finalBundle === "duo" ? safeStr(body?.label2) : "";
     const lang2 = finalBundle === "duo" ? safeStr(body?.lang2) : "";
     const style2 = finalBundle === "duo" ? safeStr(body?.style2) : "";
-
     const type2 = finalBundle === "duo" ? safeStr(body?.type2 || "single").toLowerCase() : "";
 
     const baseUrl = getBaseUrl(req);
@@ -124,16 +134,26 @@ export async function POST(req: Request) {
     let mysteryFile = "";
     if (plan === "mystery") {
       const picked = pickMysteryFile();
-      // 如果抽唔到（例如資料夾空），就給一個保命檔名（但你應該確保資料夾有檔）
       mysteryFile = picked || "mystery_mystery_MYSTERY.png";
     }
 
-    const session = await stripe.checkout.sessions.create({
+    // ✅ Build create params (add receipt email insurance only when we have a valid email)
+    const sessionParams: Stripe.Checkout.SessionCreateParams = {
       mode: "payment",
       payment_method_types: ["card"],
       line_items: [priceData],
       success_url: successUrl,
       cancel_url: cancelUrl,
+
+      // ✅ Optional: if we have email, set both customer_email and receipt_email
+      ...(customerEmail
+        ? {
+            customer_email: customerEmail,
+            payment_intent_data: {
+              receipt_email: customerEmail,
+            },
+          }
+        : {}),
 
       metadata: {
         plan,
@@ -156,10 +176,12 @@ export async function POST(req: Request) {
         // ✅ 關鍵：鎖定抽到的檔名（直接係檔名，如 xxx.png）
         mystery_file: mysteryFile,
 
-        // ✅ 你而家 /api/download 會用 plan=mystery_png + file=xxx.png 去 storage/designs/mystery_png 讀
+        // ✅ /api/download 用 plan=mystery_png + file=xxx.png 去 storage/designs/mystery_png 讀
         mystery_planFolder: "mystery_png",
       },
-    });
+    };
+
+    const session = await stripe.checkout.sessions.create(sessionParams);
 
     return NextResponse.json({ url: session.url, id: session.id });
   } catch (err: any) {
