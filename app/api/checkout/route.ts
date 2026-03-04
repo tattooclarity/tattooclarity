@@ -35,15 +35,21 @@ function safeStr(v: any, maxLen = 180) {
   return s.length > maxLen ? s.slice(0, maxLen) : s;
 }
 
-// ✅ 隨機抽圖函數
+/**
+ * ✅ 方案A：直接從 storage/designs/mystery_png 隨機抽一張 PNG
+ * - 不再依賴 storage/manifests/mystery_pool.json
+ * - 你而家檔案都放喺 storage/designs 下面，呢個先啱
+ */
 function pickMysteryFile(): string | null {
   try {
-    const manifestPath = path.join(process.cwd(), "storage", "manifests", "mystery_pool.json");
-    if (!fs.existsSync(manifestPath)) return null;
+    const dir = path.join(process.cwd(), "storage", "designs", "mystery_png");
+    if (!fs.existsSync(dir)) return null;
 
-    const raw = fs.readFileSync(manifestPath, "utf-8");
-    const data = JSON.parse(raw);
-    const files = data.files || [];
+    const files = fs
+      .readdirSync(dir)
+      .filter((f) => typeof f === "string" && f.toLowerCase().endsWith(".png"))
+      // ✅ 避免抽到 .DS_Store
+      .filter((f) => !f.startsWith("."));
 
     if (files.length === 0) return null;
 
@@ -79,7 +85,7 @@ export async function POST(req: Request) {
     const lang = safeStr(body?.lang);
     const style = safeStr(body?.style);
 
-    // ✅ NEW：type（single / phrase）— 你檔名依賴呢個
+    // ✅ type（single / phrase）
     const type = safeStr(body?.type || "single").toLowerCase();
 
     // Duo 第二組資料
@@ -88,7 +94,6 @@ export async function POST(req: Request) {
     const lang2 = finalBundle === "duo" ? safeStr(body?.lang2) : "";
     const style2 = finalBundle === "duo" ? safeStr(body?.style2) : "";
 
-    // ✅ NEW：type2（single / phrase）
     const type2 = finalBundle === "duo" ? safeStr(body?.type2 || "single").toLowerCase() : "";
 
     const baseUrl = getBaseUrl(req);
@@ -115,14 +120,14 @@ export async function POST(req: Request) {
       priceData = { price: PRICE_ID[plan], quantity: 1 };
     }
 
-    // ✅ Mystery 核心邏輯：在這裡抽圖！
+    // ✅ Mystery：付款前就抽好，並鎖定到 metadata
     let mysteryFile = "";
     if (plan === "mystery") {
       const picked = pickMysteryFile();
+      // 如果抽唔到（例如資料夾空），就給一個保命檔名（但你應該確保資料夾有檔）
       mysteryFile = picked || "mystery_mystery_MYSTERY.png";
     }
 
-    // 建立 Stripe Session
     const session = await stripe.checkout.sessions.create({
       mode: "payment",
       payment_method_types: ["card"],
@@ -148,7 +153,10 @@ export async function POST(req: Request) {
         lang2,
         style2,
 
+        // ✅ 關鍵：鎖定抽到的檔名（直接係檔名，如 xxx.png）
         mystery_file: mysteryFile,
+
+        // ✅ 你而家 /api/download 會用 plan=mystery_png + file=xxx.png 去 storage/designs/mystery_png 讀
         mystery_planFolder: "mystery_png",
       },
     });
