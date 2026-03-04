@@ -1657,7 +1657,7 @@ function CustomizeContent() {
                 lineHeight: 1.2,
               }}
             >
-              AI Mockup • Results<br className="mobileBreak" />may vary
+              AI Mockup • Results<br/>may vary
             </div>
 
             {/* Male */}
