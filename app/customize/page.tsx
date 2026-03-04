@@ -1663,9 +1663,9 @@ function CustomizeContent() {
                 lineHeight: 1.2,
               }}
             >
-              <span>AI Mockup • Results</span>
+              <span>AI Mockup • </span>
 <br className="rmvBreak" />
-<span>may vary</span>
+<span>Results may vary</span>
             </div>
 
             {/* Male */}
