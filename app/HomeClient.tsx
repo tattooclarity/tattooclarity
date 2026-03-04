@@ -19,7 +19,7 @@ const COPY = {
     kicker: 'STUDIO-READY. CULTURALLY REVIEWED.',
     // ✅✅ 升級 1：更高搜尋量主詞（H1）
     title1: 'Chinese Character Tattoo Generator',
-    title2: 'Studio-Ready Designs.\nCulturally Reviewed..',
+    title2: 'Studio-Ready Designs.\nCulturally Reviewed.',
     sub1: 'Accurate. Balanced. Studio-ready.',
     sub2: 'Preview your Chinese tattoo design before you ink forever. Avoid mistranslations and poor stroke balance.',
     trustProof: 'Designed for real tattoo appointments',
