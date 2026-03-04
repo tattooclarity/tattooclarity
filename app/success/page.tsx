@@ -1,7 +1,7 @@
 // app/success/page.tsx
 "use client";
 
-import React, { Suspense, useMemo } from "react";
+import React, { Suspense, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 
@@ -22,18 +22,77 @@ const PLAN_PRICE: Record<Plan, string> = {
   mystery: "US$19",
 };
 
+function normalizePlan(input: string | null): Plan {
+  const p = (input || "standard").toLowerCase();
+  return (["basic", "standard", "premium", "mystery"].includes(p) ? p : "standard") as Plan;
+}
+
+function normalizeBundle(input: string | null): Bundle {
+  const b = (input || "single").toLowerCase();
+  return (b === "duo" ? "duo" : "single") as Bundle;
+}
+
 function SuccessContent() {
   const sp = useSearchParams();
 
-  const orderId = sp.get("order_id") || "";
-  const planRaw = (sp.get("plan") || "standard").toLowerCase();
-  const bundleRaw = (sp.get("bundle") || "single").toLowerCase();
+  // ✅ 新版：用 session_id（來自 success_url 的 {CHECKOUT_SESSION_ID}）
+  const sessionId = sp.get("session_id") || "";
 
-  const plan = (["basic", "standard", "premium", "mystery"].includes(planRaw)
-    ? planRaw
-    : "standard") as Plan;
+  // ✅ 兼容舊版（你之前用 order_id）
+  const legacyOrderId = sp.get("order_id") || "";
 
-  const bundle = (bundleRaw === "duo" ? "duo" : "single") as Bundle;
+  const plan = normalizePlan(sp.get("plan"));
+  const bundle = normalizeBundle(sp.get("bundle"));
+
+  const [paid, setPaid] = useState<boolean | null>(null);
+  const [email, setEmail] = useState<string | null>(null);
+  const [loading, setLoading] = useState<boolean>(!!sessionId);
+
+  // ✅ A方案核心：用 session_id call 你自己 API -> retrieve stripe session -> 取 email
+  useEffect(() => {
+    if (!sessionId) {
+      setLoading(false);
+      setPaid(null);
+      setEmail(null);
+      return;
+    }
+
+    let cancelled = false;
+
+    (async () => {
+      try {
+        setLoading(true);
+        const res = await fetch("/api/stripe/session", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ session_id: sessionId }),
+        });
+
+        const data = await res.json().catch(() => ({}));
+        if (cancelled) return;
+
+        if (!res.ok) {
+          setPaid(false);
+          setEmail(null);
+          setLoading(false);
+          return;
+        }
+
+        setPaid(!!data.paid);
+        setEmail(data.email ?? null);
+        setLoading(false);
+      } catch {
+        if (cancelled) return;
+        setPaid(false);
+        setEmail(null);
+        setLoading(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [sessionId]);
 
   const title = useMemo(() => {
     const base = PLAN_LABEL[plan];
@@ -41,15 +100,19 @@ function SuccessContent() {
   }, [plan, bundle]);
 
   const price = useMemo(() => {
-    // 如果你 DUO 係 Standard=50 / Premium=78，可在這裡顯示：
     if (bundle === "duo" && plan === "standard") return "US$50 (DUO)";
     if (bundle === "duo" && plan === "premium") return "US$78 (DUO)";
     return PLAN_PRICE[plan];
   }, [plan, bundle]);
 
-  const downloadHref = `/download?order_id=${encodeURIComponent(
-    orderId
-  )}&plan=${encodeURIComponent(plan)}&bundle=${encodeURIComponent(bundle)}`;
+  // ✅ 新版 download 連結：改用 session_id
+  // （下載頁你之後都要改成讀 session_id，並用同一個 /api/stripe/session 去驗證 paid + 取 metadata）
+  const downloadHref = sessionId
+    ? `/download?session_id=${encodeURIComponent(sessionId)}`
+    : `/download?order_id=${encodeURIComponent(legacyOrderId)}&plan=${encodeURIComponent(plan)}&bundle=${encodeURIComponent(bundle)}`;
+
+  const shownIdLabel = sessionId ? "Session ID:" : "Order ID:";
+  const shownIdValue = sessionId || legacyOrderId || "(missing)";
 
   return (
     <main style={{ maxWidth: 820, margin: "40px auto", padding: "0 16px" }}>
@@ -87,11 +150,40 @@ function SuccessContent() {
         </div>
 
         <div style={{ marginTop: 10, color: "#666", fontSize: 14 }}>
-          <span>Order ID:</span>{" "}
+          <span>{shownIdLabel}</span>{" "}
           <span style={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace" }}>
-            {orderId || "(missing)"}
+            {shownIdValue}
           </span>
         </div>
+
+        {/* ✅ 顯示客人付款時輸入的 Email（A方案） */}
+        <div style={{ marginTop: 10, color: "#666", fontSize: 14 }}>
+          <span>Email:</span>{" "}
+          {loading ? (
+            <span>Checking…</span>
+          ) : email ? (
+            <b style={{ color: "#111" }}>{email}</b>
+          ) : sessionId ? (
+            <span>(not found)</span>
+          ) : (
+            <span>(no session_id)</span>
+          )}
+        </div>
+
+        {/* ✅ 額外：付款驗證狀態（避免未付款都入到 success） */}
+        {sessionId && (
+          <div style={{ marginTop: 10, fontSize: 14 }}>
+            {loading ? (
+              <span style={{ color: "#666" }}>Verifying payment…</span>
+            ) : paid === true ? (
+              <span style={{ color: "#0a7a2f", fontWeight: 800 }}>✅ Payment confirmed</span>
+            ) : paid === false ? (
+              <span style={{ color: "#b00020", fontWeight: 800 }}>⚠️ Payment not confirmed</span>
+            ) : (
+              <span style={{ color: "#666" }}>—</span>
+            )}
+          </div>
+        )}
       </div>
 
       <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
@@ -105,6 +197,9 @@ function SuccessContent() {
             color: "#fff",
             textDecoration: "none",
             fontWeight: 900,
+            // ✅ 未確認付款就先灰掉（仍可點，但視覺提示）
+            opacity: sessionId && paid === false ? 0.5 : 1,
+            pointerEvents: sessionId && paid === false ? "none" : "auto",
           }}
         >
           Go to Download
@@ -127,8 +222,25 @@ function SuccessContent() {
       </div>
 
       <p style={{ marginTop: 18, color: "#666", fontSize: 14 }}>
-        If you don’t see the receipt email, check spam/junk.
+        {email ? (
+          <>
+            We’ll send the download link to <b>{email}</b>. If you don’t see it, check spam/junk.
+          </>
+        ) : (
+          <>If you don’t see the receipt email, check spam/junk.</>
+        )}
       </p>
+
+      {/* ✅ 如果冇 session_id，提示你可能仲未改 success_url */}
+      {!sessionId && (
+        <p style={{ marginTop: 10, color: "#b00020", fontSize: 13 }}>
+          Note: session_id is missing. Make sure your checkout success_url uses:
+          {" "}
+          <span style={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace" }}>
+            ?session_id=&#123;CHECKOUT_SESSION_ID&#125;
+          </span>
+        </p>
+      )}
     </main>
   );
 }
