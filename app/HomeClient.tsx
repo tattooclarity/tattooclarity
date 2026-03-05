@@ -2505,9 +2505,19 @@ export default function HomeClient() {
             </a>
 
             {/* ✅【新增】Instagram Icon 與連結 */}
-<a href="https://www.instagram.com/tattooclarity_studio/" target="_blank" rel="noopener noreferrer" style={{ display: 'flex', alignItems: 'center' }}>
-  <img src="/social/instagram.png" alt="Follow us on Instagram" style={{ height: 22 }} />
-</a>
+            <a href="https://www.instagram.com/tattooclarity_studio/" target="_blank" rel="noopener noreferrer" style={{ display: 'flex', alignItems: 'center' }}>
+              <img src="/social/instagram.png" alt="Follow us on Instagram" style={{ height: 22 }} />
+            </a>
+
+     {/* ✅【新增】TikTok Icon 與連結 */}
+            <a href="https://www.tiktok.com/@tattoo_clarity" target="_blank" rel="noopener noreferrer" style={{ display: 'flex', alignItems: 'center' }}>
+              <img src="/social/tiktok.png" alt="Follow us on TikTok" style={{ height: 22 }} />
+            </a>
+
+     {/* ✅【新增】Pintererst Icon 與連結 */}
+            <a href="https://www.pinterest.com/tattooclarity" target="_blank" rel="noopener noreferrer" style={{ display: 'flex', alignItems: 'center' }}>
+              <img src="/social/pinterest.png" alt="Follow us on Pinterest" style={{ height: 22 }} />
+            </a>
 
             <div style={{ position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
               <img
