@@ -2491,102 +2491,102 @@ export default function HomeClient() {
         </section>
       </main>
 
-{/* FOOTER */}
-<footer className="footer">
-  <div className="wrap" style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-    {/* icon row */}
-    <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 28 }}>
-  <a href={`mailto:${BRAND.email}`} style={{ display: 'flex', alignItems: 'center' }}>
-    <img src="/social/email.png" alt="Email Us" style={{ height: 22, width: 22, display: 'block' }} />
-  </a>
+      {/* FOOTER */}
+      <footer className="footer">
+        <div className="wrap" style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+          <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 28 }}>
+            <a href={`mailto:${BRAND.email}`} style={{ display: 'flex', alignItems: 'center' }}>
+              <img src="/social/email.png" alt="Email Us" style={{ height: 22 }} />
+            </a>
+            
+            {/* ✅【新增】Facebook Icon 與連結 */}
+            <a href="https://www.facebook.com/tattooclarity" target="_blank" rel="noopener noreferrer" style={{ display: 'flex', alignItems: 'center' }}>
+              <img src="/social/facebook.png" alt="Follow us on Facebook" style={{ height: 22 }} />
+            </a>
 
-<a
-  href="https://www.facebook.com/tattooclarity/"
-  target="_blank"
-  rel="noopener noreferrer"
-  aria-label="Tattoo Clarity on Facebook"
-  style={{ display: 'flex', alignItems: 'center', gap: 6 }}
->
-  <img
-    src="/social/facebook.png?v=1"
-    alt="Facebook"
-    style={{ height: 22, width: 22, display: 'block' }}
-  />
-  <span style={{ fontSize: 10, fontWeight: 900, color: 'red' }}>FB</span>
-</a>
+            <div style={{ position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+              <img
+                src="/social/link.png"
+                alt="Copy Link"
+                onClick={copyToClipboard}
+                style={{ height: 22, cursor: 'pointer' }}
+              />
+              {linkCopied && (
+                <span
+                  style={{
+                    position: 'absolute',
+                    top: 28,
+                    fontSize: 9,
+                    fontWeight: 950,
+                    color: 'var(--gold)',
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  COPIED ✓
+                </span>
+              )}
+            </div>
+          </div>
 
-  <div style={{ position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-    <img
-      src="/social/link.png"
-      alt="Copy Link"
-      onClick={copyToClipboard}
-      style={{ height: 22, width: 22, display: 'block', cursor: 'pointer' }}
-    />
-    {linkCopied && (
-      <span style={{ position: 'absolute', top: 28, fontSize: 9, fontWeight: 950, color: 'var(--gold)', whiteSpace: 'nowrap' }}>
-        COPIED ✓
-      </span>
-    )}
-  </div>
-</div>
+          <div className="footerGrid">
+            <div style={{ fontSize: 11, fontWeight: 900, color: '#141414', letterSpacing: '0.05em' }}>
+              © {BRAND.year} {BRAND.name}
+              <br />
+              <span
+                style={{
+                  color: 'rgba(0,0,0,0.5)',
+                  marginTop: 6,
+                  display: 'inline-block',
+                  lineHeight: 1.5,
+                }}
+              >
+                {BRAND.email}
+                <br />
+                For studio licensing inquiries, contact us.
+              </span>
+            </div>
 
-    <div className="footerGrid">
-      <div style={{ fontSize: 11, fontWeight: 900, color: '#141414', letterSpacing: '0.05em' }}>
-        © {BRAND.year} {BRAND.name}
-        <br />
-        <span
-          style={{
-            color: 'rgba(0,0,0,0.5)',
-            marginTop: 6,
-            display: 'inline-block',
-            lineHeight: 1.5,
-          }}
-        >
-          {BRAND.email}
-          <br />
-          For studio licensing inquiries, contact us.
-        </span>
-      </div>
+            <div style={{ textAlign: 'center' }}>
+              <div className="footerLinks">
+                <Link href="/terms" style={{ color: '#141414', textDecoration: 'none' }}>
+                  Terms
+                </Link>
+                <span style={{ color: 'rgba(0,0,0,0.25)' }}>•</span>
+                <Link href="/privacy" style={{ color: '#141414', textDecoration: 'none' }}>
+                  Privacy
+                </Link>
+                <span style={{ color: 'rgba(0,0,0,0.25)' }}>•</span>
+                <Link href="/refund" style={{ color: '#141414', textDecoration: 'none' }}>
+                  Refund Policy
+                </Link>
+                <span style={{ color: 'rgba(0,0,0,0.25)' }}>•</span>
+                <button onClick={openContact} className="footerContactBtn">
+                  Contact Us
+                </button>
+              </div>
+              <div className="footerFine">
+                Product images are AI-generated mockups for visual guidance only.
+                <br />
+                All sales are final on digital downloads. Download links expire by plan.
+              </div>
+            </div>
 
-      <div style={{ textAlign: 'center' }}>
-        <div className="footerLinks">
-          <Link href="/terms" style={{ color: '#141414', textDecoration: 'none' }}>
-            Terms
-          </Link>
-          <span style={{ color: 'rgba(0,0,0,0.25)' }}>•</span>
-          <Link href="/privacy" style={{ color: '#141414', textDecoration: 'none' }}>
-            Privacy
-          </Link>
-          <span style={{ color: 'rgba(0,0,0,0.25)' }}>•</span>
-          <Link href="/refund" style={{ color: '#141414', textDecoration: 'none' }}>
-            Refund Policy
-          </Link>
-          <span style={{ color: 'rgba(0,0,0,0.25)' }}>•</span>
-          <button onClick={openContact} className="footerContactBtn">
-            Contact Us
-          </button>
+            <div
+              className="footerRightAlign"
+              style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6 }}
+            >
+              <div style={{ fontSize: 10, color: 'rgba(0,0,0,0.4)', fontWeight: 700, letterSpacing: '0.05em' }}>
+                Secure payment powered by Stripe.
+              </div>
+              <div style={{ display: 'flex', gap: 12 }}>
+                {['visa', 'mastercard', 'amex', 'applepay', 'googlepay'].map((card) => (
+                  <img key={card} src={`/payments/${card}.png`} alt={card} style={{ height: 18 }} />
+                ))}
+              </div>
+            </div>
+          </div>
         </div>
-
-        <div className="footerFine">
-          Product images are AI-generated mockups for visual guidance only.
-          <br />
-          All sales are final on digital downloads. Download links expire by plan.
-        </div>
-      </div>
-
-      <div className="footerRightAlign" style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6 }}>
-        <div style={{ fontSize: 10, color: 'rgba(0,0,0,0.4)', fontWeight: 700, letterSpacing: '0.05em' }}>
-          Secure payment powered by Stripe.
-        </div>
-        <div style={{ display: 'flex', gap: 12 }}>
-          {['visa', 'mastercard', 'amex', 'applepay', 'googlepay'].map((card) => (
-            <img key={card} src={`/payments/${card}.png`} alt={card} style={{ height: 18 }} />
-          ))}
-        </div>
-      </div>
-    </div>
-  </div>
-</footer>
+      </footer>
 
       {/* CONTACT MODAL */}
       {isContactOpen && (
@@ -2773,3 +2773,4 @@ export default function HomeClient() {
     </div>
   );
 }
+
