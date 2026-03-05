@@ -35,19 +35,16 @@ function safeStr(v: any, maxLen = 180) {
   return s.length > maxLen ? s.slice(0, maxLen) : s;
 }
 
-// ✅ very light email sanity check (avoid sending obviously invalid strings to Stripe)
+// ✅ light email sanity check
 function normalizeEmail(v: any) {
   const e = safeStr(v, 254).trim().toLowerCase();
   if (!e) return "";
-  // simple pattern; Stripe will still validate further
   const ok = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e);
   return ok ? e : "";
 }
 
 /**
  * ✅ 方案A：直接從 storage/designs/mystery_png 隨機抽一張 PNG
- * - 不再依賴 storage/manifests/mystery_pool.json
- * - 你而家檔案都放喺 storage/designs 下面，呢個先啱
  */
 function pickMysteryFile(): string | null {
   try {
@@ -57,7 +54,7 @@ function pickMysteryFile(): string | null {
     const files = fs
       .readdirSync(dir)
       .filter((f) => typeof f === "string" && f.toLowerCase().endsWith(".png"))
-      .filter((f) => !f.startsWith(".")); // ✅ avoid .DS_Store etc
+      .filter((f) => !f.startsWith("."));
 
     if (files.length === 0) return null;
 
@@ -72,25 +69,35 @@ function pickMysteryFile(): string | null {
 export async function POST(req: Request) {
   try {
     const key = process.env.STRIPE_SECRET_KEY;
-    if (!key) return NextResponse.json({ error: "Missing STRIPE_SECRET_KEY" }, { status: 400 });
+    if (!key) {
+      return NextResponse.json(
+        { error: "Missing STRIPE_SECRET_KEY" },
+        { status: 400 }
+      );
+    }
 
-    // ✅ 建議加 apiVersion，避免 Stripe SDK 將來行為變動（可選）
+    // ✅ Stripe client
     const stripe = new Stripe(key);
 
     const body = (await req.json().catch(() => ({}))) as any;
 
     const planRaw = safeStr(body?.plan || "standard").toLowerCase();
     const bundleRaw = safeStr(body?.bundle || "single").toLowerCase();
-    const plan: Plan = (["basic", "standard", "premium", "mystery"].includes(planRaw) ? planRaw : "standard") as Plan;
+
+    const plan: Plan = (["basic", "standard", "premium", "mystery"].includes(planRaw)
+      ? planRaw
+      : "standard") as Plan;
+
     const bundle: Bundle = bundleRaw === "duo" ? "duo" : "single";
 
-    // ✅ NEW: Optional email from frontend (for receipt insurance)
+    // ✅ Optional email from frontend (receipt insurance)
     const customerEmail = normalizeEmail(body?.email);
 
     // Mystery 不支援 Duo
-    const finalBundle: Bundle = bundle === "duo" && plan !== "mystery" ? "duo" : "single";
+    const finalBundle: Bundle =
+      bundle === "duo" && plan !== "mystery" ? "duo" : "single";
 
-    // 讀取前端傳來的資料
+    // 讀取前端傳來的資料（Set 1）
     const theme = safeStr(body?.theme);
     const label = safeStr(body?.label);
     const lang = safeStr(body?.lang);
@@ -99,7 +106,7 @@ export async function POST(req: Request) {
     // ✅ type（single / phrase）
     const type = safeStr(body?.type || "single").toLowerCase();
 
-    // Duo 第二組資料
+    // Set 2（Duo）
     const theme2 = finalBundle === "duo" ? safeStr(body?.theme2) : "";
     const label2 = finalBundle === "duo" ? safeStr(body?.label2) : "";
     const lang2 = finalBundle === "duo" ? safeStr(body?.lang2) : "";
@@ -108,10 +115,14 @@ export async function POST(req: Request) {
 
     const baseUrl = getBaseUrl(req);
 
-    const successUrl = `${baseUrl}/success?plan=${encodeURIComponent(plan)}&session_id={CHECKOUT_SESSION_ID}`;
-    const cancelUrl = `${baseUrl}/customize?plan=${encodeURIComponent(plan)}&canceled=1`;
+    const successUrl = `${baseUrl}/success?plan=${encodeURIComponent(
+      plan
+    )}&session_id={CHECKOUT_SESSION_ID}`;
+    const cancelUrl = `${baseUrl}/customize?plan=${encodeURIComponent(
+      plan
+    )}&canceled=1`;
 
-    // 計算價格
+    // 計算價格 line_item
     let priceData: Stripe.Checkout.SessionCreateParams.LineItem;
 
     if (finalBundle === "duo" && DUO_USD[plan]) {
@@ -137,15 +148,20 @@ export async function POST(req: Request) {
       mysteryFile = picked || "mystery_mystery_MYSTERY.png";
     }
 
-    // ✅ Build create params (add receipt email insurance only when we have a valid email)
     const sessionParams: Stripe.Checkout.SessionCreateParams = {
       mode: "payment",
+
+      /**
+       * ✅ 只用 card（但 card 會自動包含 Apple Pay / Google Pay / Link）
+       * 前提：你已喺 Stripe Dashboard 啟用 Apple Pay / Google Pay（你而家已經開咗 ✅）
+       * 這樣就唔會自動加埋 Klarna / Bancontact 呢類額外方法。
+       */
       payment_method_types: ["card"],
+
       line_items: [priceData],
       success_url: successUrl,
       cancel_url: cancelUrl,
 
-      // ✅ Optional: if we have email, set both customer_email and receipt_email
       ...(customerEmail
         ? {
             customer_email: customerEmail,
@@ -159,7 +175,7 @@ export async function POST(req: Request) {
         plan,
         bundle: finalBundle,
 
-        // ✅ 重要：把 type/type2 存落去，download page 先會正確加 "_phrase"
+        // ✅ 重要：存 type/type2，download page 先會正確加 "_phrase"
         type: plan === "mystery" ? "single" : type,
         type2: plan === "mystery" ? "" : type2,
 
@@ -173,10 +189,8 @@ export async function POST(req: Request) {
         lang2,
         style2,
 
-        // ✅ 關鍵：鎖定抽到的檔名（直接係檔名，如 xxx.png）
+        // ✅ 鎖定抽到的檔名
         mystery_file: mysteryFile,
-
-        // ✅ /api/download 用 plan=mystery_png + file=xxx.png 去 storage/designs/mystery_png 讀
         mystery_planFolder: "mystery_png",
       },
     };
@@ -186,6 +200,9 @@ export async function POST(req: Request) {
     return NextResponse.json({ url: session.url, id: session.id });
   } catch (err: any) {
     console.error("Checkout error:", err);
-    return NextResponse.json({ error: err?.message || "Error" }, { status: 500 });
+    return NextResponse.json(
+      { error: err?.message || "Error" },
+      { status: 500 }
+    );
   }
 }
