@@ -159,6 +159,8 @@ export async function POST(req: Request) {
       payment_method_types: ["card"],
 
       line_items: [priceData],
+        // ✅ 允許在 Stripe Checkout 輸入 Promotion Code（你個 LIVEFREE-9K3F1）
+  allow_promotion_codes: true,
       success_url: successUrl,
       cancel_url: cancelUrl,
 
