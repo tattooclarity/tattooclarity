@@ -1,16 +1,19 @@
 import type { MetadataRoute } from "next";
 
 export default function sitemap(): MetadataRoute.Sitemap {
-  const baseUrl = "https://www.tattooclarity.com"; // ✅用你最終會去到嘅版本（建議 www）
+  const baseUrl = "https://www.tattooclarity.com"; // ✅建議用最終 canonical（通常係 www）
   const lastModified = new Date();
 
-  // ✅只放「真係存在」嘅頁面，唔好放 /download /success /cancel
+  // ✅ 只放「真係存在」嘅 page
   const routes = [
     "/",
     "/customize",
-    "/privacy",
-    "/terms",
-    "/refund",
+    // 有就再加，例如：
+    // "/pricing",
+    // "/faq",
+    // "/privacy",
+    // "/terms",
+    // "/refund",
   ];
 
   return routes.map((path) => ({
