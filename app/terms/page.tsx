@@ -63,10 +63,14 @@ export default function Terms() {
           </h1>
 
           {/* ✅ 字體 18px，行距 1.65，段落間距精確控制為 10px */}
-          <div style={{ fontSize: '18px', lineHeight: '1.65', color: 'rgba(0,0,0,0.8)' }}>
-            <p style={{ margin: '0 0 10px 0' }}>
-              Tattoo Clarity provides digital stencil files only. No physical products are shipped.
-            </p>
+         <div style={{ fontSize: '18px', lineHeight: '1.65', color: 'rgba(0,0,0,0.8)' }}>
+  <p style={{ margin: '0 0 10px 0' }}>
+    This service is not currently offered to customers located in Québec, Canada.
+  </p>
+
+  <p style={{ margin: '0 0 10px 0' }}>
+    Tattoo Clarity provides digital stencil files only. No physical products are shipped.
+  </p>
 
             <p style={{ margin: '0 0 10px 0' }}>
               All purchases are one-time payments. No subscriptions.

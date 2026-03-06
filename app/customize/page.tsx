@@ -293,6 +293,8 @@ function CustomizeContent() {
   const [armPickIndex, setArmPickIndex] = useState<{ male: number; female: number }>({ male: 0, female: 1 });
 
   const [isRedirecting, setIsRedirecting] = useState(false);
+  const [customerCountry, setCustomerCountry] = useState('United States');
+  const [customerProvince, setCustomerProvince] = useState('');
 
   useEffect(() => setConfirmed(false), [currentPlan, activeTheme, picked, showPhrase, layoutByArm, bundle]);
 
@@ -582,7 +584,17 @@ function CustomizeContent() {
 
   const selectionNeeded = isMystery ? 0 : canDuo && bundle === 'duo' ? 2 : 1;
   const selectionValid = isMystery ? true : picked.length === selectionNeeded;
-  const canProceed = confirmed && selectionValid && !isRedirecting;
+  const isCanada = customerCountry === 'Canada';
+  const normalizedProvince = customerProvince.trim().toLowerCase();
+  const isQuebecBlocked = isCanada && ['qc', 'quebec', 'québec'].includes(normalizedProvince);
+  const missingProvince = isCanada && !customerProvince.trim();
+
+  const canProceed =
+    confirmed &&
+    selectionValid &&
+    !isRedirecting &&
+    !isQuebecBlocked &&
+    !missingProvince;
 
   // ✅ FIX: Build payload with granular metadata (label, lang, style, styleLetter, fontId, type)
   const buildCheckoutPayload = () => {
@@ -601,9 +613,11 @@ function CustomizeContent() {
     const duoOk = bundle === 'duo' && picked.length >= 2;
 
     return {
-      plan: currentPlan,
-      bundle,
-      qty: qtyParam,
+  plan: currentPlan,
+  bundle,
+  qty: qtyParam,
+  customerCountry,
+  customerProvince,
       
       // ✅ 單買 / DUO 第一份 (Core Metadata)
       theme: isMystery ? 'mystery' : (m1?.theme || ''),
@@ -634,6 +648,8 @@ function CustomizeContent() {
     if (!confirmed) return;
     if (!selectionValid) return;
     if (isRedirecting) return;
+    if (missingProvince) return;
+if (isQuebecBlocked) return;
 
     try {
       setIsRedirecting(true);
@@ -1907,6 +1923,142 @@ function CustomizeContent() {
             </div>
           </div>
 
+          <div
+            style={{
+              border: '1px solid rgba(0,0,0,0.08)',
+              borderRadius: 16,
+              padding: 16,
+              background: '#ffffff',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 12,
+            }}
+          >
+            <div style={{ fontSize: 13, fontWeight: 800, color: '#111' }}>
+              Billing Location
+            </div>
+
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: '1fr 1fr',
+                gap: 12,
+              }}
+            >
+              <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                <span style={{ fontSize: 11, fontWeight: 800, color: 'rgba(0,0,0,0.6)' }}>
+                  Country
+                </span>
+                <select
+                  value={customerCountry}
+                  onChange={(e) => {
+                    setCustomerCountry(e.target.value);
+                    setCustomerProvince('');
+                  }}
+                  style={{
+                    border: '1px solid #ddd',
+                    borderRadius: 10,
+                    padding: '12px 14px',
+                    fontSize: 14,
+                    fontWeight: 700,
+                    background: '#fff',
+                    color: '#111',
+                  }}
+                >
+                  <option value="United States">United States</option>
+                  <option value="Canada">Canada</option>
+                  <option value="Other">Other</option>
+                </select>
+              </label>
+
+              <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                <span style={{ fontSize: 11, fontWeight: 800, color: 'rgba(0,0,0,0.6)' }}>
+                  {isCanada ? 'Province' : 'State / Province'}
+                </span>
+
+                {isCanada ? (
+                  <select
+                    value={customerProvince}
+                    onChange={(e) => setCustomerProvince(e.target.value)}
+                    style={{
+                      border: '1px solid #ddd',
+                      borderRadius: 10,
+                      padding: '12px 14px',
+                      fontSize: 14,
+                      fontWeight: 700,
+                      background: '#fff',
+                      color: '#111',
+                    }}
+                  >
+                    <option value="">Select province</option>
+                    <option value="AB">Alberta</option>
+                    <option value="BC">British Columbia</option>
+                    <option value="MB">Manitoba</option>
+                    <option value="NB">New Brunswick</option>
+                    <option value="NL">Newfoundland and Labrador</option>
+                    <option value="NS">Nova Scotia</option>
+                    <option value="ON">Ontario</option>
+                    <option value="PE">Prince Edward Island</option>
+                    <option value="QC">Québec</option>
+                    <option value="SK">Saskatchewan</option>
+                    <option value="NT">Northwest Territories</option>
+                    <option value="NU">Nunavut</option>
+                    <option value="YT">Yukon</option>
+                  </select>
+                ) : (
+                  <input
+                    type="text"
+                    value={customerProvince}
+                    onChange={(e) => setCustomerProvince(e.target.value)}
+                    placeholder="Optional"
+                    style={{
+                      border: '1px solid #ddd',
+                      borderRadius: 10,
+                      padding: '12px 14px',
+                      fontSize: 14,
+                      fontWeight: 700,
+                      background: '#fff',
+                      color: '#111',
+                    }}
+                  />
+                )}
+              </label>
+            </div>
+
+            {missingProvince && (
+              <div
+                style={{
+                  fontSize: 12,
+                  fontWeight: 800,
+                  color: '#b45309',
+                  background: '#fff7ed',
+                  border: '1px solid #fed7aa',
+                  borderRadius: 10,
+                  padding: '10px 12px',
+                }}
+              >
+                Please select a province to continue.
+              </div>
+            )}
+
+            {isQuebecBlocked && (
+              <div
+                style={{
+                  fontSize: 12,
+                  fontWeight: 800,
+                  color: '#b91c1c',
+                  background: '#fef2f2',
+                  border: '1px solid #fecaca',
+                  borderRadius: 10,
+                  padding: '10px 12px',
+                  lineHeight: 1.5,
+                }}
+              >
+                Sorry, this service is not currently available to customers located in Québec.
+              </div>
+            )}
+          </div>
+
           <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: selectionValid ? 'pointer' : 'not-allowed', padding: '0 4px', opacity: selectionValid ? 1 : 0.7 }}>
             <input
               type="checkbox"
@@ -1940,7 +2092,11 @@ function CustomizeContent() {
               transition: 'all 0.2s',
             }}
           >
-            {isRedirecting ? 'Redirecting to Stripe…' : `Pay USD$${displayPrice} securely →`}
+            {isQuebecBlocked
+              ? 'Service unavailable in Québec'
+              : isRedirecting
+              ? 'Redirecting to Stripe…'
+              : `Pay USD$${displayPrice} securely →`}
           </button>
 
           <div style={{ fontSize: 11, lineHeight: 1.5, color: 'rgba(0,0,0,0.55)', textAlign: 'center', maxWidth: 520, margin: '14px auto 0' }}>
@@ -1974,5 +2130,3 @@ export default function Page() {
     </div>
   );
 }
-
-

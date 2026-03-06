@@ -24,7 +24,9 @@ const PLAN_PRICE: Record<Plan, string> = {
 
 function normalizePlan(input: string | null): Plan {
   const p = (input || "standard").toLowerCase();
-  return (["basic", "standard", "premium", "mystery"].includes(p) ? p : "standard") as Plan;
+  return (["basic", "standard", "premium", "mystery"].includes(p)
+    ? p
+    : "standard") as Plan;
 }
 
 function normalizeBundle(input: string | null): Bundle {
@@ -32,13 +34,20 @@ function normalizeBundle(input: string | null): Bundle {
   return (b === "duo" ? "duo" : "single") as Bundle;
 }
 
+type StripeSessionResponse = {
+  paid: boolean;
+  email?: string | null;
+  session_id?: string;
+  purchased_at?: number;
+  quebec_blocked?: boolean;
+  metadata?: Record<string, string>;
+  error?: string;
+};
+
 function SuccessContent() {
   const sp = useSearchParams();
 
-  // ✅ 新版：用 session_id（來自 success_url 的 {CHECKOUT_SESSION_ID}）
   const sessionId = sp.get("session_id") || "";
-
-  // ✅ 兼容舊版（你之前用 order_id）
   const legacyOrderId = sp.get("order_id") || "";
 
   const plan = normalizePlan(sp.get("plan"));
@@ -47,13 +56,14 @@ function SuccessContent() {
   const [paid, setPaid] = useState<boolean | null>(null);
   const [email, setEmail] = useState<string | null>(null);
   const [loading, setLoading] = useState<boolean>(!!sessionId);
+  const [quebecBlocked, setQuebecBlocked] = useState(false);
 
-  // ✅ A方案核心：用 session_id call 你自己 API -> retrieve stripe session -> 取 email
   useEffect(() => {
     if (!sessionId) {
       setLoading(false);
       setPaid(null);
       setEmail(null);
+      setQuebecBlocked(false);
       return;
     }
 
@@ -62,6 +72,7 @@ function SuccessContent() {
     (async () => {
       try {
         setLoading(true);
+
         const res = await fetch("/api/stripe/session", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -69,23 +80,26 @@ function SuccessContent() {
           cache: "no-store",
         });
 
-        const data = await res.json().catch(() => ({}));
+        const data = (await res.json().catch(() => ({}))) as StripeSessionResponse;
         if (cancelled) return;
 
         if (!res.ok) {
           setPaid(false);
           setEmail(null);
+          setQuebecBlocked(false);
           setLoading(false);
           return;
         }
 
         setPaid(!!data.paid);
         setEmail(data.email ?? null);
+        setQuebecBlocked(!!data.quebec_blocked);
         setLoading(false);
       } catch {
         if (cancelled) return;
         setPaid(false);
         setEmail(null);
+        setQuebecBlocked(false);
         setLoading(false);
       }
     })();
@@ -106,32 +120,44 @@ function SuccessContent() {
     return PLAN_PRICE[plan];
   }, [plan, bundle]);
 
-  /**
-   * ✅ 最穩陣：Go to Download 一定要帶 query
-   * - order_id = sessionId   （舊 download flow 立即可用）
-   * - session_id = sessionId （新 flow 也可用）
-   * - plan / bundle          （舊頁面如果要用到也有）
-   */
   const downloadHref = sessionId
-    ? `/download?order_id=${encodeURIComponent(sessionId)}&session_id=${encodeURIComponent(
+    ? `/download?order_id=${encodeURIComponent(
         sessionId
-      )}&plan=${encodeURIComponent(plan)}&bundle=${encodeURIComponent(bundle)}`
-    : `/download?order_id=${encodeURIComponent(legacyOrderId)}&plan=${encodeURIComponent(
+      )}&session_id=${encodeURIComponent(sessionId)}&plan=${encodeURIComponent(
         plan
-      )}&bundle=${encodeURIComponent(bundle)}`;
+      )}&bundle=${encodeURIComponent(bundle)}`
+    : `/download?order_id=${encodeURIComponent(
+        legacyOrderId
+      )}&plan=${encodeURIComponent(plan)}&bundle=${encodeURIComponent(bundle)}`;
 
   const shownIdLabel = sessionId ? "Session ID:" : "Order ID:";
   const shownIdValue = sessionId || legacyOrderId || "(missing)";
 
+  const pageTitle = loading
+    ? "Checking payment..."
+    : quebecBlocked
+    ? "Order Blocked"
+    : paid === true
+    ? "Payment Successful ✅"
+    : "Payment Not Confirmed";
+
+  const pageSubtitle = loading
+    ? "Please wait while we verify your payment."
+    : quebecBlocked
+    ? "This service is not available to customers located in Québec."
+    : paid === true
+    ? "Thanks! Your payment went through. Your files are ready."
+    : "We could not confirm this payment yet.";
+
+  const disableDownload = loading || paid !== true || quebecBlocked;
+
   return (
     <main style={{ maxWidth: 820, margin: "40px auto", padding: "0 16px" }}>
       <h1 style={{ margin: "0 0 8px", fontSize: 34, fontWeight: 900 }}>
-        Payment Successful ✅
+        {pageTitle}
       </h1>
 
-      <p style={{ margin: "0 0 18px", color: "#555" }}>
-        Thanks! Your payment went through. Your files are ready.
-      </p>
+      <p style={{ margin: "0 0 18px", color: "#555" }}>{pageSubtitle}</p>
 
       <div
         style={{
@@ -160,7 +186,9 @@ function SuccessContent() {
 
         <div style={{ marginTop: 10, color: "#666", fontSize: 14 }}>
           <span>{shownIdLabel}</span>{" "}
-          <span style={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace" }}>
+          <span
+            style={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace" }}
+          >
             {shownIdValue}
           </span>
         </div>
@@ -182,16 +210,42 @@ function SuccessContent() {
           <div style={{ marginTop: 10, fontSize: 14 }}>
             {loading ? (
               <span style={{ color: "#666" }}>Verifying payment…</span>
+            ) : quebecBlocked ? (
+              <span style={{ color: "#b00020", fontWeight: 800 }}>
+                ⛔ Service unavailable in Québec
+              </span>
             ) : paid === true ? (
-              <span style={{ color: "#0a7a2f", fontWeight: 800 }}>✅ Payment confirmed</span>
+              <span style={{ color: "#0a7a2f", fontWeight: 800 }}>
+                ✅ Payment confirmed
+              </span>
             ) : paid === false ? (
-              <span style={{ color: "#b00020", fontWeight: 800 }}>⚠️ Payment not confirmed</span>
+              <span style={{ color: "#b00020", fontWeight: 800 }}>
+                ⚠️ Payment not confirmed
+              </span>
             ) : (
               <span style={{ color: "#666" }}>—</span>
             )}
           </div>
         )}
       </div>
+
+      {quebecBlocked && (
+        <div
+          style={{
+            border: "1px solid #fecaca",
+            borderRadius: 14,
+            padding: 16,
+            marginBottom: 18,
+            background: "#fef2f2",
+            color: "#991b1b",
+            fontSize: 14,
+            lineHeight: 1.5,
+            fontWeight: 700,
+          }}
+        >
+          This order cannot be fulfilled because the billing location is in Québec.
+        </div>
+      )}
 
       <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
         <Link
@@ -205,8 +259,8 @@ function SuccessContent() {
             color: "#fff",
             textDecoration: "none",
             fontWeight: 900,
-            opacity: sessionId && paid === false ? 0.5 : 1,
-            pointerEvents: sessionId && paid === false ? "none" : "auto",
+            opacity: disableDownload ? 0.5 : 1,
+            pointerEvents: disableDownload ? "none" : "auto",
           }}
         >
           Go to Download
@@ -230,9 +284,12 @@ function SuccessContent() {
       </div>
 
       <p style={{ marginTop: 18, color: "#666", fontSize: 14 }}>
-        {email ? (
+        {quebecBlocked ? (
+          <>Please contact support if you believe this billing location was detected incorrectly.</>
+        ) : email ? (
           <>
-            We’ll send the download link to <b>{email}</b>. If you don’t see it, check spam/junk.
+            We’ll send the download link to <b>{email}</b>. If you don’t see it,
+            check spam/junk.
           </>
         ) : (
           <>If you don’t see the receipt email, check spam/junk.</>
@@ -242,7 +299,9 @@ function SuccessContent() {
       {!sessionId && (
         <p style={{ marginTop: 10, color: "#b00020", fontSize: 13 }}>
           Note: session_id is missing. Make sure your checkout success_url uses:{" "}
-          <span style={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace" }}>
+          <span
+            style={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace" }}
+          >
             ?session_id=&#123;CHECKOUT_SESSION_ID&#125;
           </span>
         </p>

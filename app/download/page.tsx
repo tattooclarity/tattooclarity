@@ -116,6 +116,7 @@ type StripeSessionResponse = {
   paid: boolean;
   email?: string | null;
   session_id?: string;
+  purchased_at?: number;
   metadata?: Record<string, string>;
   error?: string;
 };
@@ -186,7 +187,7 @@ function DownloadContent() {
             ok: true,
             paid: !!data.paid,
             order_id: orderId,
-            purchased_at: Date.now(), // 前端用來算 expiry，先用 now（可接受）
+            purchased_at: Number(data.purchased_at || 0),
             metadata: data.metadata || {},
           });
           return;
@@ -225,6 +226,13 @@ function DownloadContent() {
 
   // ✅ 最終資料
   const md = verify?.metadata || {};
+
+  const customerCountryMeta = toLower((md as any).customer_country || "");
+  const customerProvinceMeta = toLower((md as any).customer_province || "");
+  const isCanadaOrder = ["canada", "ca"].includes(customerCountryMeta);
+  const isQuebecOrder =
+    isCanadaOrder && ["qc", "quebec", "québec"].includes(customerProvinceMeta);
+
   const plan = normalizePlan((md as any).plan || urlPlan);
 
   // ✅ DUO 判斷（但 Mystery 強制唔用 DUO）
@@ -261,6 +269,7 @@ function DownloadContent() {
 
   const purchasedAtMs = verify?.purchased_at || 0;
   const invalidLink = !ok || !paid || !purchasedAtMs;
+  const blockedQuebecDownload = isQuebecOrder;
 
   const expiresAtMs = invalidLink ? 0 : addDays(purchasedAtMs, days);
   const isExpired = invalidLink ? true : Date.now() > expiresAtMs;
@@ -284,7 +293,7 @@ function DownloadContent() {
         key: "mystery",
         label: "Download Mystery Tattoo (Standard Quality)",
         href: mysteryFile
-          ? `/api/download?plan=${encodeURIComponent(folder)}&file=${encodeURIComponent(mysteryFile)}`
+          ? `/api/download?plan=${encodeURIComponent(folder)}&file=${encodeURIComponent(mysteryFile)}&order_id=${encodeURIComponent(orderId)}`
           : `/api/download?plan=mystery&order_id=${encodeURIComponent(orderId)}`,
         className: "btnGold",
       });
@@ -292,7 +301,12 @@ function DownloadContent() {
     }
 
     // ✅ /api/download 的 plan key
-    const downloadPlan: string = plan === "premium" ? "premium_png" : plan;
+    const downloadPlan: string =
+      plan === "premium"
+        ? "premium_png"
+        : plan === "basic"
+        ? "basic_png"
+        : plan;
 
     // --- SET 1 PNG ---
     // ✅ 你檔名格式：label + _phrase + _tc/_sc + _SA/_SB/_SC
@@ -307,7 +321,7 @@ function DownloadContent() {
     list.push({
       key: "png1",
       label: pngLabel1,
-      href: `/api/download?plan=${encodeURIComponent(downloadPlan)}&file=${encodeURIComponent(filePath1)}`,
+      href: `/api/download?plan=${encodeURIComponent(downloadPlan)}&file=${encodeURIComponent(filePath1)}&order_id=${encodeURIComponent(orderId)}`,
       className: "btnGold",
     });
 
@@ -324,7 +338,7 @@ function DownloadContent() {
       list.push({
         key: "png2",
         label: pngLabel2,
-        href: `/api/download?plan=${encodeURIComponent(downloadPlan)}&file=${encodeURIComponent(filePath2)}`,
+        href: `/api/download?plan=${encodeURIComponent(downloadPlan)}&file=${encodeURIComponent(filePath2)}&order_id=${encodeURIComponent(orderId)}`,
         className: "btnGold",
       });
     }
@@ -337,7 +351,7 @@ function DownloadContent() {
       list.push({
         key: "svg1",
         label: svgLabel1,
-        href: `/api/download?plan=premium_svg&file=${encodeURIComponent(svgPath1)}`,
+        href: `/api/download?plan=premium_svg&file=${encodeURIComponent(svgPath1)}&order_id=${encodeURIComponent(orderId)}`,
         className: "btnOutline",
       });
 
@@ -348,7 +362,7 @@ function DownloadContent() {
         list.push({
           key: "svg2",
           label: "Download Vector SVG (Set 2)",
-          href: `/api/download?plan=premium_svg&file=${encodeURIComponent(svgPath2)}`,
+          href: `/api/download?plan=premium_svg&file=${encodeURIComponent(svgPath2)}&order_id=${encodeURIComponent(orderId)}`,
           className: "btnOutline",
         });
       }
@@ -434,7 +448,22 @@ function DownloadContent() {
             DOWNLOAD
           </div>
 
-          {isExpired ? (
+          {blockedQuebecDownload ? (
+            <div className="expiredBox">
+              <div className="expiredTitle">This download is not available in Québec.</div>
+              <div className="expiredText">
+                This order is marked as Québec, so file access is unavailable.
+                Please contact support if you believe this is an error.
+              </div>
+              <a
+                href={mailtoSupport(`Québec Download Block - Order ${orderId}`)}
+                className="btnOutline"
+                style={{ marginTop: 12 }}
+              >
+                Contact Support
+              </a>
+            </div>
+          ) : isExpired ? (
             <div className="expiredBox">
               <div className="expiredTitle">
                 {invalidLink ? "Invalid download link." : "This download link has expired."}

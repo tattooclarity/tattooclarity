@@ -68,6 +68,20 @@ export async function POST(req: Request) {
     const email = session.customer_details?.email || session.customer_email || "";
     if (!email) return NextResponse.json({ received: true, skipped: "no_email" });
 
+    // ✅ Québec Safety Check
+    const metaCountry = (session.metadata?.customer_country || "").trim().toLowerCase();
+    const metaProvince = (session.metadata?.customer_province || "").trim().toLowerCase();
+    const stripeCountry = (session.customer_details?.address?.country || "").trim().toLowerCase();
+    const stripeState = (session.customer_details?.address?.state || "").trim().toLowerCase();
+
+    const isCanadaOrder = ["canada", "ca"].includes(metaCountry) || ["canada", "ca"].includes(stripeCountry);
+    const normalizedProvince = metaProvince || stripeState;
+    const isQuebecOrder = isCanadaOrder && ["qc", "quebec", "québec"].includes(normalizedProvince);
+
+    if (isQuebecOrder) {
+      return NextResponse.json({ received: true, skipped: "quebec_blocked" });
+    }
+
     const plan = (session.metadata?.plan || "standard").toLowerCase();
     const sessionId = session.id;
 

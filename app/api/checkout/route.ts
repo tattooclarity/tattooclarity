@@ -93,9 +93,38 @@ export async function POST(req: Request) {
     // ✅ Optional email from frontend (receipt insurance)
     const customerEmail = normalizeEmail(body?.email);
 
+    const customerCountry = safeStr(body?.customerCountry, 80).trim();
+    const customerProvince = safeStr(body?.customerProvince, 80).trim();
+
+    const normalizedCountry = customerCountry.toLowerCase();
+    const normalizedProvince = customerProvince.toLowerCase();
+    const isCanada = normalizedCountry === "canada";
+    const isQuebecBlocked =
+      isCanada && ["qc", "quebec", "québec"].includes(normalizedProvince);
+    const missingProvince = isCanada && !customerProvince;
+
     // Mystery 不支援 Duo
     const finalBundle: Bundle =
       bundle === "duo" && plan !== "mystery" ? "duo" : "single";
+
+    if (missingProvince) {
+      return NextResponse.json(
+        {
+          error: "Please select a province to continue.",
+        },
+        { status: 400 }
+      );
+    }
+
+    if (isQuebecBlocked) {
+      return NextResponse.json(
+        {
+          error:
+            "This service is not currently available to customers located in Québec.",
+        },
+        { status: 403 }
+      );
+    }
 
     // 讀取前端傳來的資料（Set 1）
     const theme = safeStr(body?.theme);
@@ -150,6 +179,7 @@ export async function POST(req: Request) {
 
     const sessionParams: Stripe.Checkout.SessionCreateParams = {
       mode: "payment",
+      billing_address_collection: "required",
 
       /**
        * ✅ 只用 card（但 card 會自動包含 Apple Pay / Google Pay / Link）
@@ -159,8 +189,8 @@ export async function POST(req: Request) {
       payment_method_types: ["card"],
 
       line_items: [priceData],
-        // ✅ 允許在 Stripe Checkout 輸入 Promotion Code（你個 LIVEFREE-9K3F1）
-  allow_promotion_codes: false,
+        // Promotion codes disabled
+allow_promotion_codes: false,
       success_url: successUrl,
       cancel_url: cancelUrl,
 
@@ -190,6 +220,9 @@ export async function POST(req: Request) {
         label2,
         lang2,
         style2,
+
+        customer_country: customerCountry || "",
+        customer_province: customerProvince || "",
 
         // ✅ 鎖定抽到的檔名
         mystery_file: mysteryFile,
