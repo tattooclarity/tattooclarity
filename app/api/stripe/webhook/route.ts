@@ -3,11 +3,7 @@ import { NextResponse } from "next/server";
 import Stripe from "stripe";
 import { Resend } from "resend";
 
-export const runtime = "nodejs";
-
-// ✅ 不設定 apiVersion，避免 TS 紅線 / 版本不一致問題
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "");
-const resend = new Resend(process.env.RESEND_API_KEY || "");
+export const dynamic = "force-dynamic";
 
 // ---- helpers ----
 function trimSlash(u: string) {
@@ -19,7 +15,10 @@ function getBaseUrl(req: Request) {
   if (envUrl) return trimSlash(envUrl);
 
   const proto = req.headers.get("x-forwarded-proto") || "https";
-  const host = req.headers.get("x-forwarded-host") || req.headers.get("host") || "";
+  const host =
+    req.headers.get("x-forwarded-host") ||
+    req.headers.get("host") ||
+    "";
   return trimSlash(`${proto}://${host}`);
 }
 
@@ -36,15 +35,41 @@ function mustEnv(name: string, v: string | undefined | null) {
   return v;
 }
 
+// ✅ 不要在檔案頂層直接 new Stripe / new Resend
+//    Cloudflare build 時可能未有 env，會直接爆
+function getStripe() {
+  const key = mustEnv("STRIPE_SECRET_KEY", process.env.STRIPE_SECRET_KEY);
+  return new Stripe(key);
+}
+
+function getResend() {
+  const key = mustEnv("RESEND_API_KEY", process.env.RESEND_API_KEY);
+  return new Resend(key);
+}
+
 export async function POST(req: Request) {
   try {
-    const webhookSecret = mustEnv("STRIPE_WEBHOOK_SECRET", process.env.STRIPE_WEBHOOK_SECRET);
-    mustEnv("STRIPE_SECRET_KEY", process.env.STRIPE_SECRET_KEY);
-    mustEnv("RESEND_API_KEY", process.env.RESEND_API_KEY);
-    const from = mustEnv("EMAIL_FROM", process.env.EMAIL_FROM);
+    const webhookSecret = mustEnv(
+      "STRIPE_WEBHOOK_SECRET",
+      process.env.STRIPE_WEBHOOK_SECRET
+    );
+
+    // ✅ 兼容你之前兩種命名：RESEND_FROM / EMAIL_FROM
+    const from = mustEnv(
+      "RESEND_FROM or EMAIL_FROM",
+      process.env.RESEND_FROM || process.env.EMAIL_FROM
+    );
+
+    const stripe = getStripe();
+    const resend = getResend();
 
     const sig = req.headers.get("stripe-signature");
-    if (!sig) return NextResponse.json({ error: "Missing stripe-signature" }, { status: 400 });
+    if (!sig) {
+      return NextResponse.json(
+        { error: "Missing stripe-signature" },
+        { status: 400 }
+      );
+    }
 
     const body = await req.text();
 
@@ -53,7 +78,11 @@ export async function POST(req: Request) {
       event = stripe.webhooks.constructEvent(body, sig, webhookSecret);
     } catch (err: any) {
       return NextResponse.json(
-        { error: `Webhook signature verify failed: ${err?.message || "invalid signature"}` },
+        {
+          error: `Webhook signature verify failed: ${
+            err?.message || "invalid signature"
+          }`,
+        },
         { status: 400 }
       );
     }
@@ -65,21 +94,46 @@ export async function POST(req: Request) {
 
     const session = event.data.object as Stripe.Checkout.Session;
 
-    const email = session.customer_details?.email || session.customer_email || "";
-    if (!email) return NextResponse.json({ received: true, skipped: "no_email" });
+    const email =
+      session.customer_details?.email ||
+      session.customer_email ||
+      "";
+
+    if (!email) {
+      return NextResponse.json({
+        received: true,
+        skipped: "no_email",
+      });
+    }
 
     // ✅ Québec Safety Check
-    const metaCountry = (session.metadata?.customer_country || "").trim().toLowerCase();
-    const metaProvince = (session.metadata?.customer_province || "").trim().toLowerCase();
-    const stripeCountry = (session.customer_details?.address?.country || "").trim().toLowerCase();
-    const stripeState = (session.customer_details?.address?.state || "").trim().toLowerCase();
+    const metaCountry = (session.metadata?.customer_country || "")
+      .trim()
+      .toLowerCase();
+    const metaProvince = (session.metadata?.customer_province || "")
+      .trim()
+      .toLowerCase();
+    const stripeCountry = (session.customer_details?.address?.country || "")
+      .trim()
+      .toLowerCase();
+    const stripeState = (session.customer_details?.address?.state || "")
+      .trim()
+      .toLowerCase();
 
-    const isCanadaOrder = ["canada", "ca"].includes(metaCountry) || ["canada", "ca"].includes(stripeCountry);
+    const isCanadaOrder =
+      ["canada", "ca"].includes(metaCountry) ||
+      ["canada", "ca"].includes(stripeCountry);
+
     const normalizedProvince = metaProvince || stripeState;
-    const isQuebecOrder = isCanadaOrder && ["qc", "quebec", "québec"].includes(normalizedProvince);
+    const isQuebecOrder =
+      isCanadaOrder &&
+      ["qc", "quebec", "québec"].includes(normalizedProvince);
 
     if (isQuebecOrder) {
-      return NextResponse.json({ received: true, skipped: "quebec_blocked" });
+      return NextResponse.json({
+        received: true,
+        skipped: "quebec_blocked",
+      });
     }
 
     const plan = (session.metadata?.plan || "standard").toLowerCase();
@@ -130,6 +184,9 @@ export async function POST(req: Request) {
     return NextResponse.json({ received: true, emailed: true });
   } catch (err: any) {
     console.error("Webhook error:", err);
-    return NextResponse.json({ error: err?.message || "Webhook error" }, { status: 500 });
+    return NextResponse.json(
+      { error: err?.message || "Webhook error" },
+      { status: 500 }
+    );
   }
 }
