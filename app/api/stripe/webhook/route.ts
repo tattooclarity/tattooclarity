@@ -35,12 +35,16 @@ function mustEnv(name: string, v: string | undefined | null) {
   return v;
 }
 
-// ✅ 不要在檔案頂層直接 new Stripe / new Resend
-//    Cloudflare build 時可能未有 env，會直接爆
+// ✅ Cloudflare / Workers-safe Stripe client
 function getStripe() {
   const key = mustEnv("STRIPE_SECRET_KEY", process.env.STRIPE_SECRET_KEY);
-  return new Stripe(key);
+  return new Stripe(key, {
+    httpClient: Stripe.createFetchHttpClient(),
+  });
 }
+
+// ✅ Web Crypto provider for webhook verification on Workers
+const cryptoProvider = Stripe.createSubtleCryptoProvider();
 
 function getResend() {
   const key = mustEnv("RESEND_API_KEY", process.env.RESEND_API_KEY);
@@ -54,7 +58,7 @@ export async function POST(req: Request) {
       process.env.STRIPE_WEBHOOK_SECRET
     );
 
-    // ✅ 兼容你之前兩種命名：RESEND_FROM / EMAIL_FROM
+    // ✅ 兼容兩種命名
     const from = mustEnv(
       "RESEND_FROM or EMAIL_FROM",
       process.env.RESEND_FROM || process.env.EMAIL_FROM
@@ -75,7 +79,13 @@ export async function POST(req: Request) {
 
     let event: Stripe.Event;
     try {
-      event = stripe.webhooks.constructEvent(body, sig, webhookSecret);
+      event = await stripe.webhooks.constructEventAsync(
+        body,
+        sig,
+        webhookSecret,
+        undefined,
+        cryptoProvider
+      );
     } catch (err: any) {
       return NextResponse.json(
         {
@@ -87,7 +97,6 @@ export async function POST(req: Request) {
       );
     }
 
-    // ✅ 只處理 checkout.session.completed
     if (event.type !== "checkout.session.completed") {
       return NextResponse.json({ received: true });
     }
@@ -106,7 +115,6 @@ export async function POST(req: Request) {
       });
     }
 
-    // ✅ Québec Safety Check
     const metaCountry = (session.metadata?.customer_country || "")
       .trim()
       .toLowerCase();
@@ -141,7 +149,6 @@ export async function POST(req: Request) {
 
     const baseUrl = getBaseUrl(req);
 
-    // ✅ download 已支援：session_id / order_id 都可以
     const downloadUrl =
       `${baseUrl}/download?session_id=${encodeURIComponent(sessionId)}` +
       `&order_id=${encodeURIComponent(sessionId)}` +
