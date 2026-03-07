@@ -190,7 +190,7 @@ export async function POST(req: Request) {
 
       line_items: [priceData],
         // Promotion codes disabled
-allow_promotion_codes: false,
+allow_promotion_codes: true,
       success_url: successUrl,
       cancel_url: cancelUrl,
 
