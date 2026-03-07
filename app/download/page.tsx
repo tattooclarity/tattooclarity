@@ -178,7 +178,11 @@ function DownloadContent() {
           if (!alive) return;
 
           if (!res.ok) {
-            setVerify({ ok: false, paid: false, error: data?.error || "Stripe session verify failed" });
+            setVerify({
+              ok: false,
+              paid: false,
+              error: data?.error || "Stripe session verify failed",
+            });
             return;
           }
 
@@ -194,9 +198,12 @@ function DownloadContent() {
         }
 
         // ✅ 否則走舊 verify API（兼容舊連結/舊單）
-        const res = await fetch(`/api/order/verify?order_id=${encodeURIComponent(orderId)}`, {
-          cache: "no-store",
-        });
+        const res = await fetch(
+          `/api/order/verify?order_id=${encodeURIComponent(orderId)}`,
+          {
+            cache: "no-store",
+          }
+        );
         const data = (await res.json()) as VerifyResponse;
         if (!alive) return;
         setVerify(data);
@@ -293,23 +300,29 @@ function DownloadContent() {
         key: "mystery",
         label: "Download Mystery Tattoo (Standard Quality)",
         href: mysteryFile
-          ? `/api/download?plan=${encodeURIComponent(folder)}&file=${encodeURIComponent(mysteryFile)}&order_id=${encodeURIComponent(orderId)}`
+          ? `/api/download?plan=${encodeURIComponent(folder)}&file=${encodeURIComponent(
+              mysteryFile
+            )}&order_id=${encodeURIComponent(orderId)}`
           : `/api/download?plan=mystery&order_id=${encodeURIComponent(orderId)}`,
         className: "btnGold",
       });
       return list;
     }
 
-    // ✅ /api/download 的 plan key
+    // ✅ 修正 /api/download 的 plan key
     const downloadPlan: string =
       plan === "premium"
         ? "premium_png"
         : plan === "basic"
         ? "basic_png"
+        : plan === "standard"
+        ? "standard_png"
+        : plan === "mystery"
+        ? "mystery_png"
         : plan;
 
     // --- SET 1 PNG ---
-    // ✅ 你檔名格式：label + _phrase + _tc/_sc + _SA/_SB/_SC
+    // ✅ 檔名格式：label + _phrase + _tc/_sc + _SA/_SB/_SC
     const baseName1 = `${label}${isPhrase ? "_phrase" : ""}_${lang}_${style}`;
     const filePath1 = `${theme}/${baseName1}.png`;
 
@@ -321,7 +334,9 @@ function DownloadContent() {
     list.push({
       key: "png1",
       label: pngLabel1,
-      href: `/api/download?plan=${encodeURIComponent(downloadPlan)}&file=${encodeURIComponent(filePath1)}&order_id=${encodeURIComponent(orderId)}`,
+      href: `/api/download?plan=${encodeURIComponent(
+        downloadPlan
+      )}&file=${encodeURIComponent(filePath1)}&order_id=${encodeURIComponent(orderId)}`,
       className: "btnGold",
     });
 
@@ -338,7 +353,9 @@ function DownloadContent() {
       list.push({
         key: "png2",
         label: pngLabel2,
-        href: `/api/download?plan=${encodeURIComponent(downloadPlan)}&file=${encodeURIComponent(filePath2)}&order_id=${encodeURIComponent(orderId)}`,
+        href: `/api/download?plan=${encodeURIComponent(
+          downloadPlan
+        )}&file=${encodeURIComponent(filePath2)}&order_id=${encodeURIComponent(orderId)}`,
         className: "btnGold",
       });
     }
@@ -351,7 +368,9 @@ function DownloadContent() {
       list.push({
         key: "svg1",
         label: svgLabel1,
-        href: `/api/download?plan=premium_svg&file=${encodeURIComponent(svgPath1)}&order_id=${encodeURIComponent(orderId)}`,
+        href: `/api/download?plan=premium_svg&file=${encodeURIComponent(
+          svgPath1
+        )}&order_id=${encodeURIComponent(orderId)}`,
         className: "btnOutline",
       });
 
@@ -362,7 +381,9 @@ function DownloadContent() {
         list.push({
           key: "svg2",
           label: "Download Vector SVG (Set 2)",
-          href: `/api/download?plan=premium_svg&file=${encodeURIComponent(svgPath2)}&order_id=${encodeURIComponent(orderId)}`,
+          href: `/api/download?plan=premium_svg&file=${encodeURIComponent(
+            svgPath2
+          )}&order_id=${encodeURIComponent(orderId)}`,
           className: "btnOutline",
         });
       }
@@ -472,7 +493,9 @@ function DownloadContent() {
                 If you need access again, please contact support with your order reference.
               </div>
               <a
-                href={mailtoSupport(`${invalidLink ? "Invalid Download Link" : "Expired Download"} - Order ${orderId}`)}
+                href={mailtoSupport(
+                  `${invalidLink ? "Invalid Download Link" : "Expired Download"} - Order ${orderId}`
+                )}
                 className="btnOutline"
                 style={{ marginTop: 12 }}
               >
@@ -503,8 +526,12 @@ function DownloadContent() {
                 </a>
               ))}
 
-              {plan === "basic" && <div className="hint">*Transparent background is available in Standard/Premium.</div>}
-              {plan === "standard" && <div className="hint">*Vector SVG is only available in Premium.</div>}
+              {plan === "basic" && (
+                <div className="hint">*Transparent background is available in Standard/Premium.</div>
+              )}
+              {plan === "standard" && (
+                <div className="hint">*Vector SVG is only available in Premium.</div>
+              )}
               {plan === "mystery" && (
                 <div className="hint">
                   *Mystery delivers a randomly selected Standard-quality PNG (locked to your order).
@@ -727,7 +754,11 @@ export default function DownloadPage() {
           border-radius: 12px;
           font-weight: 800;
           font-size: 15px;
-          background: linear-gradient(180deg, rgba(197, 161, 74, 0.98), rgba(197, 161, 74, 0.84));
+          background: linear-gradient(
+            180deg,
+            rgba(197, 161, 74, 0.98),
+            rgba(197, 161, 74, 0.84)
+          );
           color: #1b1b1b;
           box-shadow: 0 10px 26px rgba(197, 161, 74, 0.22);
           transition: all 0.2s ease;
@@ -819,7 +850,13 @@ export default function DownloadPage() {
         }
       `}</style>
 
-      <Suspense fallback={<div style={{ textAlign: "center", padding: "40px" }}>Loading downloads...</div>}>
+      <Suspense
+        fallback={
+          <div style={{ textAlign: "center", padding: "40px" }}>
+            Loading downloads...
+          </div>
+        }
+      >
         <DownloadContent />
       </Suspense>
     </>
