@@ -22,14 +22,14 @@ const PLAN_PRICE: Record<Plan, string> = {
   mystery: "US$19",
 };
 
-function normalizePlan(input: string | null): Plan {
+function normalizePlan(input: string | null | undefined): Plan {
   const p = (input || "standard").toLowerCase();
   return (["basic", "standard", "premium", "mystery"].includes(p)
     ? p
     : "standard") as Plan;
 }
 
-function normalizeBundle(input: string | null): Bundle {
+function normalizeBundle(input: string | null | undefined): Bundle {
   const b = (input || "single").toLowerCase();
   return (b === "duo" ? "duo" : "single") as Bundle;
 }
@@ -40,9 +40,27 @@ type StripeSessionResponse = {
   session_id?: string;
   purchased_at?: number;
   quebec_blocked?: boolean;
+  amount_total?: number;
+  currency?: string;
   metadata?: Record<string, string>;
   error?: string;
 };
+
+function formatMoney(amountTotal?: number, currency?: string) {
+  if (typeof amountTotal !== "number") return null;
+  const code = (currency || "usd").toUpperCase();
+
+  try {
+    return new Intl.NumberFormat("en-US", {
+      style: "currency",
+      currency: code,
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(amountTotal / 100);
+  } catch {
+    return `US$${(amountTotal / 100).toFixed(2)}`;
+  }
+}
 
 function SuccessContent() {
   const sp = useSearchParams();
@@ -50,13 +68,15 @@ function SuccessContent() {
   const sessionId = sp.get("session_id") || "";
   const legacyOrderId = sp.get("order_id") || "";
 
-  const plan = normalizePlan(sp.get("plan"));
-  const bundle = normalizeBundle(sp.get("bundle"));
+  // URL params 只做 fallback
+  const urlPlan = normalizePlan(sp.get("plan"));
+  const urlBundle = normalizeBundle(sp.get("bundle"));
 
   const [paid, setPaid] = useState<boolean | null>(null);
   const [email, setEmail] = useState<string | null>(null);
   const [loading, setLoading] = useState<boolean>(!!sessionId);
   const [quebecBlocked, setQuebecBlocked] = useState(false);
+  const [sessionData, setSessionData] = useState<StripeSessionResponse | null>(null);
 
   useEffect(() => {
     if (!sessionId) {
@@ -64,6 +84,7 @@ function SuccessContent() {
       setPaid(null);
       setEmail(null);
       setQuebecBlocked(false);
+      setSessionData(null);
       return;
     }
 
@@ -84,6 +105,7 @@ function SuccessContent() {
         if (cancelled) return;
 
         if (!res.ok) {
+          setSessionData(data);
           setPaid(false);
           setEmail(null);
           setQuebecBlocked(false);
@@ -91,12 +113,14 @@ function SuccessContent() {
           return;
         }
 
+        setSessionData(data);
         setPaid(!!data.paid);
         setEmail(data.email ?? null);
         setQuebecBlocked(!!data.quebec_blocked);
         setLoading(false);
       } catch {
         if (cancelled) return;
+        setSessionData(null);
         setPaid(false);
         setEmail(null);
         setQuebecBlocked(false);
@@ -109,26 +133,37 @@ function SuccessContent() {
     };
   }, [sessionId]);
 
+  // ✅ 優先用 Stripe session metadata，唔好只信 URL
+  const actualPlan = normalizePlan(sessionData?.metadata?.plan || urlPlan);
+  const actualBundle = normalizeBundle(sessionData?.metadata?.bundle || urlBundle);
+
   const title = useMemo(() => {
-    const base = PLAN_LABEL[plan];
-    return bundle === "duo" ? `${base} (DUO)` : base;
-  }, [plan, bundle]);
+    const base = PLAN_LABEL[actualPlan];
+    return actualBundle === "duo" ? `${base} (DUO)` : base;
+  }, [actualPlan, actualBundle]);
 
   const price = useMemo(() => {
-    if (bundle === "duo" && plan === "standard") return "US$50 (DUO)";
-    if (bundle === "duo" && plan === "premium") return "US$78 (DUO)";
-    return PLAN_PRICE[plan];
-  }, [plan, bundle]);
+    const fromStripe = formatMoney(sessionData?.amount_total, sessionData?.currency);
+    if (fromStripe) return fromStripe;
+
+    if (actualBundle === "duo" && actualPlan === "standard") return "US$50.00";
+    if (actualBundle === "duo" && actualPlan === "premium") return "US$78.00";
+    if (actualPlan === "basic") return "US$15.00";
+    if (actualPlan === "standard") return "US$29.00";
+    if (actualPlan === "premium") return "US$49.00";
+    if (actualPlan === "mystery") return "US$19.00";
+    return PLAN_PRICE[actualPlan];
+  }, [sessionData?.amount_total, sessionData?.currency, actualPlan, actualBundle]);
 
   const downloadHref = sessionId
     ? `/download?order_id=${encodeURIComponent(
         sessionId
       )}&session_id=${encodeURIComponent(sessionId)}&plan=${encodeURIComponent(
-        plan
-      )}&bundle=${encodeURIComponent(bundle)}`
+        actualPlan
+      )}&bundle=${encodeURIComponent(actualBundle)}`
     : `/download?order_id=${encodeURIComponent(
         legacyOrderId
-      )}&plan=${encodeURIComponent(plan)}&bundle=${encodeURIComponent(bundle)}`;
+      )}&plan=${encodeURIComponent(actualPlan)}&bundle=${encodeURIComponent(actualBundle)}`;
 
   const shownIdLabel = sessionId ? "Session ID:" : "Order ID:";
   const shownIdValue = sessionId || legacyOrderId || "(missing)";
@@ -225,6 +260,12 @@ function SuccessContent() {
             ) : (
               <span style={{ color: "#666" }}>—</span>
             )}
+          </div>
+        )}
+
+        {!loading && sessionData?.error && (
+          <div style={{ marginTop: 10, color: "#b00020", fontSize: 13 }}>
+            Error: {sessionData.error}
           </div>
         )}
       </div>
