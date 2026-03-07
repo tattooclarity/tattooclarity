@@ -1,4 +1,3 @@
-// app/download/page.tsx
 "use client";
 
 import React, { Suspense, useEffect, useMemo, useState } from "react";
@@ -7,7 +6,6 @@ import { useSearchParams } from "next/navigation";
 
 type Plan = "basic" | "standard" | "premium" | "mystery";
 
-// ✅ 全站統一 Support Email
 const SUPPORT_EMAIL = "info@tattooclarity.com";
 
 // ---- helpers ----
@@ -27,6 +25,23 @@ function toBool(v: any) {
 function toInt(v: any) {
   const n = Number(v);
   return Number.isFinite(n) ? n : 0;
+}
+
+function encodePathKeepSlash(p: string) {
+  return p
+    .split("/")
+    .filter(Boolean)
+    .map((seg) => encodeURIComponent(seg))
+    .join("/");
+}
+
+function makeDownloadsHref(folder: string, filePath: string) {
+  return `/downloads/${encodeURIComponent(folder)}/${encodePathKeepSlash(filePath)}`;
+}
+
+function getDownloadFileName(filePath: string) {
+  const parts = filePath.split("/");
+  return parts[parts.length - 1] || "download";
 }
 
 // ✅ plan normalize
@@ -49,7 +64,6 @@ function planLabel(plan: Plan, isDuo: boolean) {
       ? "Premium"
       : "Mystery";
 
-  // ✅ Mystery 永遠唔顯示 DUO
   if (plan === "mystery") return base;
   return isDuo ? `${base} (DUO)` : base;
 }
@@ -101,7 +115,6 @@ function mailtoSupport(subject: string) {
   return `mailto:${SUPPORT_EMAIL}?subject=${s}`;
 }
 
-// ✅ 舊 verify API（你原本用嘅）
 type VerifyResponse = {
   ok: boolean;
   paid?: boolean;
@@ -111,7 +124,6 @@ type VerifyResponse = {
   error?: string;
 };
 
-// ✅ 新 stripe session API（你新增嘅 /api/stripe/session）
 type StripeSessionResponse = {
   paid: boolean;
   email?: string | null;
@@ -121,32 +133,26 @@ type StripeSessionResponse = {
   error?: string;
 };
 
+type DownloadItem = {
+  key: string;
+  label: string;
+  href: string;
+  className: string;
+  downloadName?: string;
+};
+
 function DownloadContent() {
   const sp = useSearchParams();
 
-  /**
-   * ✅ 兼容最重要修復：
-   * - 你新流程係 session_id
-   * - 舊流程係 order_id
-   * 所以：orderId 同時接受兩者
-   */
   const orderId = sp.get("order_id") || sp.get("session_id") || "UNKNOWN";
 
-  // URL fallback
   const urlPlan = normalizePlan(sp.get("plan"));
   const urlTheme = sp.get("theme") || "balance";
   const urlLabel = sp.get("label") || "harmony";
   const urlLang = (sp.get("lang") || "tc").toLowerCase();
   const urlStyle = (sp.get("style") || "SA").toUpperCase();
+  const urlType = (sp.get("type") || "phrase").toLowerCase();
 
-  /**
-   * ✅ 重大修正：
-   * 你 storage/designs 裡面的檔名幾乎全部都有 "_phrase_"
-   * 所以 URL fallback 預設改成 "phrase"（救舊單/漏傳 type）
-   */
-  const urlType = (sp.get("type") || "phrase").toLowerCase(); // single/phrase
-
-  // ✅ DUO 第二份 URL fallback
   const urlTheme2 = sp.get("theme2") || "";
   const urlLabel2 = sp.get("label2") || "";
   const urlLang2 = (sp.get("lang2") || "").toLowerCase();
@@ -163,8 +169,6 @@ function DownloadContent() {
       try {
         setLoading(true);
 
-        // ✅ 如果係 Stripe checkout session id（cs_ 開頭）
-        // 優先走新 API：/api/stripe/session
         if (orderId && orderId.startsWith("cs_")) {
           const res = await fetch("/api/stripe/session", {
             method: "POST",
@@ -186,7 +190,6 @@ function DownloadContent() {
             return;
           }
 
-          // ✅ 轉成你原本 UI 期待的 verify 結構
           setVerify({
             ok: true,
             paid: !!data.paid,
@@ -197,12 +200,9 @@ function DownloadContent() {
           return;
         }
 
-        // ✅ 否則走舊 verify API（兼容舊連結/舊單）
         const res = await fetch(
           `/api/order/verify?order_id=${encodeURIComponent(orderId)}`,
-          {
-            cache: "no-store",
-          }
+          { cache: "no-store" }
         );
         const data = (await res.json()) as VerifyResponse;
         if (!alive) return;
@@ -216,7 +216,6 @@ function DownloadContent() {
       }
     }
 
-    // ✅ 允許 cs_ 或其他 id；UNKNOWN/空就直接 invalid
     if (orderId && orderId !== "UNKNOWN") run();
     else {
       setVerify({ ok: false, error: "Invalid or missing order_id." });
@@ -230,8 +229,6 @@ function DownloadContent() {
 
   const paid = !!verify?.paid;
   const ok = !!verify?.ok;
-
-  // ✅ 最終資料
   const md = verify?.metadata || {};
 
   const customerCountryMeta = toLower((md as any).customer_country || "");
@@ -242,7 +239,6 @@ function DownloadContent() {
 
   const plan = normalizePlan((md as any).plan || urlPlan);
 
-  // ✅ DUO 判斷（但 Mystery 強制唔用 DUO）
   const qtyRaw =
     toInt((md as any).qty) ||
     toInt((md as any).quantity) ||
@@ -259,11 +255,9 @@ function DownloadContent() {
   const lang = (((md as any).lang || urlLang) || "tc").toLowerCase();
   const style = (((md as any).style || urlStyle) || "SA").toUpperCase();
 
-  // ✅ type 取 metadata；如果冇，就用 URL fallback（而 URL fallback 已預設 phrase）
   const type1 = (((md as any).type || urlType) || "phrase") as string;
   const isPhrase = type1.toLowerCase() === "phrase";
 
-  // ✅ DUO 第二份資料
   const theme2 = (((md as any).theme2 || urlTheme2) || theme) as string;
   const label2 = (((md as any).label2 || urlLabel2) || "") as string;
   const lang2 = ((((md as any).lang2 || urlLang2) || lang) as string).toLowerCase();
@@ -283,15 +277,9 @@ function DownloadContent() {
 
   const missingDuoSecond = isDuo && !label2;
 
-  /**
-   * ✅ Download list
-   * - Mystery：用 metadata.mystery_file（你 checkout 已存好）
-   * - Standard/Basic/Premium：用 file path
-   */
   const downloads = useMemo(() => {
-    const list: Array<{ key: string; label: string; href: string; className: string }> = [];
+    const list: DownloadItem[] = [];
 
-    // Mystery
     if (plan === "mystery") {
       const mysteryFile = (md as any).mystery_file || "";
       const folder = (md as any).mystery_planFolder || "mystery_png";
@@ -299,17 +287,13 @@ function DownloadContent() {
       list.push({
         key: "mystery",
         label: "Download Mystery Tattoo (Standard Quality)",
-        href: mysteryFile
-          ? `/api/download?plan=${encodeURIComponent(folder)}&file=${encodeURIComponent(
-              mysteryFile
-            )}&order_id=${encodeURIComponent(orderId)}`
-          : `/api/download?plan=mystery&order_id=${encodeURIComponent(orderId)}`,
+        href: mysteryFile ? makeDownloadsHref(folder, mysteryFile) : "#",
         className: "btnGold",
+        downloadName: mysteryFile ? getDownloadFileName(mysteryFile) : "mystery.png",
       });
       return list;
     }
 
-    // ✅ 修正 /api/download 的 plan key
     const downloadPlan: string =
       plan === "premium"
         ? "premium_png"
@@ -321,8 +305,6 @@ function DownloadContent() {
         ? "mystery_png"
         : plan;
 
-    // --- SET 1 PNG ---
-    // ✅ 檔名格式：label + _phrase + _tc/_sc + _SA/_SB/_SC
     const baseName1 = `${label}${isPhrase ? "_phrase" : ""}_${lang}_${style}`;
     const filePath1 = `${theme}/${baseName1}.png`;
 
@@ -334,13 +316,11 @@ function DownloadContent() {
     list.push({
       key: "png1",
       label: pngLabel1,
-      href: `/api/download?plan=${encodeURIComponent(
-        downloadPlan
-      )}&file=${encodeURIComponent(filePath1)}&order_id=${encodeURIComponent(orderId)}`,
+      href: makeDownloadsHref(downloadPlan, filePath1),
       className: "btnGold",
+      downloadName: getDownloadFileName(filePath1),
     });
 
-    // --- SET 2 PNG (DUO) ---
     if (isDuo && label2) {
       const baseName2 = `${label2}${isPhrase2 ? "_phrase" : ""}_${lang2}_${style2}`;
       const filePath2 = `${theme2}/${baseName2}.png`;
@@ -353,14 +333,12 @@ function DownloadContent() {
       list.push({
         key: "png2",
         label: pngLabel2,
-        href: `/api/download?plan=${encodeURIComponent(
-          downloadPlan
-        )}&file=${encodeURIComponent(filePath2)}&order_id=${encodeURIComponent(orderId)}`,
+        href: makeDownloadsHref(downloadPlan, filePath2),
         className: "btnGold",
+        downloadName: getDownloadFileName(filePath2),
       });
     }
 
-    // --- Premium SVG ---
     if (plan === "premium") {
       const svgPath1 = `${theme}/${baseName1}.svg`;
       const svgLabel1 = isDuo ? "Download Vector SVG (Set 1)" : "Download Vector SVG";
@@ -368,10 +346,9 @@ function DownloadContent() {
       list.push({
         key: "svg1",
         label: svgLabel1,
-        href: `/api/download?plan=premium_svg&file=${encodeURIComponent(
-          svgPath1
-        )}&order_id=${encodeURIComponent(orderId)}`,
+        href: makeDownloadsHref("premium_svg", svgPath1),
         className: "btnOutline",
+        downloadName: getDownloadFileName(svgPath1),
       });
 
       if (isDuo && label2) {
@@ -381,10 +358,9 @@ function DownloadContent() {
         list.push({
           key: "svg2",
           label: "Download Vector SVG (Set 2)",
-          href: `/api/download?plan=premium_svg&file=${encodeURIComponent(
-            svgPath2
-          )}&order_id=${encodeURIComponent(orderId)}`,
+          href: makeDownloadsHref("premium_svg", svgPath2),
           className: "btnOutline",
+          downloadName: getDownloadFileName(svgPath2),
         });
       }
     }
@@ -392,7 +368,6 @@ function DownloadContent() {
     return list;
   }, [
     plan,
-    orderId,
     md,
     theme,
     label,
@@ -521,7 +496,12 @@ function DownloadContent() {
               ) : null}
 
               {downloads.map((d) => (
-                <a key={d.key} href={d.href} className={d.className}>
+                <a
+                  key={d.key}
+                  href={d.href}
+                  className={d.className}
+                  download={d.downloadName || true}
+                >
                   <span style={{ fontSize: 18 }}>↓</span> {d.label}
                 </a>
               ))}
