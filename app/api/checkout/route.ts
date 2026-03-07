@@ -11,9 +11,9 @@ type Plan = "basic" | "standard" | "premium" | "mystery";
 type Bundle = "single" | "duo";
 
 const PRICE_ID: Record<Plan, string> = {
-  basic: "price_1T6zEm8ibVtR5keHigRfsfSn",
-  standard: "price_1T6yzG8ibVtR5keHaYKudoTW",
-  premium: "price_1T6zFx8ibVtR5keH6CS5Qsu1",
+  basic: "price_1T89rw8yI8oL3SNLMwBZKoe9",
+  standard: "price_1T89rp8yI8oL3SNLJgMTRE2y",
+  premium: "price_1T89s28yI8oL3SNLyFdyHP3i",
   mystery: "price_1T89bC8yI8oL3SNLqmnUsmLC",
 };
 
