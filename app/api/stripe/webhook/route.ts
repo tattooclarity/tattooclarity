@@ -5,7 +5,6 @@ import { Resend } from "resend";
 
 export const dynamic = "force-dynamic";
 
-// ---- helpers ----
 function trimSlash(u: string) {
   return u.replace(/\/$/, "");
 }
@@ -35,7 +34,6 @@ function mustEnv(name: string, v: string | undefined | null) {
   return v;
 }
 
-// ✅ Cloudflare / Workers-safe Stripe client
 function getStripe() {
   const key = mustEnv("STRIPE_SECRET_KEY", process.env.STRIPE_SECRET_KEY);
   return new Stripe(key, {
@@ -43,7 +41,6 @@ function getStripe() {
   });
 }
 
-// ✅ Web Crypto provider for webhook verification on Workers
 const cryptoProvider = Stripe.createSubtleCryptoProvider();
 
 function getResend() {
@@ -58,7 +55,6 @@ export async function POST(req: Request) {
       process.env.STRIPE_WEBHOOK_SECRET
     );
 
-    // ✅ 兼容兩種命名
     const from = mustEnv(
       "RESEND_FROM or EMAIL_FROM",
       process.env.RESEND_FROM || process.env.EMAIL_FROM
@@ -87,6 +83,7 @@ export async function POST(req: Request) {
         cryptoProvider
       );
     } catch (err: any) {
+      console.error("Webhook signature verify failed:", err);
       return NextResponse.json(
         {
           error: `Webhook signature verify failed: ${
@@ -98,7 +95,7 @@ export async function POST(req: Request) {
     }
 
     if (event.type !== "checkout.session.completed") {
-      return NextResponse.json({ received: true });
+      return NextResponse.json({ received: true, skipped: "unhandled_event_type" });
     }
 
     const session = event.data.object as Stripe.Checkout.Session;
@@ -132,7 +129,7 @@ export async function POST(req: Request) {
       ["canada", "ca"].includes(metaCountry) ||
       ["canada", "ca"].includes(stripeCountry);
 
-    const normalizedProvince = metaProvince || stripeState;
+    const normalizedProvince = stripeState || metaProvince;
     const isQuebecOrder =
       isCanadaOrder &&
       ["qc", "quebec", "québec"].includes(normalizedProvince);
@@ -146,7 +143,6 @@ export async function POST(req: Request) {
 
     const plan = (session.metadata?.plan || "standard").toLowerCase();
     const sessionId = session.id;
-
     const baseUrl = getBaseUrl(req);
 
     const downloadUrl =
@@ -156,7 +152,7 @@ export async function POST(req: Request) {
 
     const safeDownloadUrl = escapeHtml(downloadUrl);
 
-    await resend.emails.send({
+    const sendResult = await resend.emails.send({
       from,
       to: email,
       subject: "Your Tattoo Files Are Ready ✅",
@@ -188,7 +184,23 @@ export async function POST(req: Request) {
       `,
     });
 
-    return NextResponse.json({ received: true, emailed: true });
+    if ((sendResult as any)?.error) {
+      console.error("Resend send error:", (sendResult as any).error);
+      return NextResponse.json(
+        {
+          error: `Resend send failed: ${
+            (sendResult as any).error?.message || "unknown error"
+          }`,
+        },
+        { status: 500 }
+      );
+    }
+
+    return NextResponse.json({
+      received: true,
+      emailed: true,
+      resend_id: (sendResult as any)?.data?.id || null,
+    });
   } catch (err: any) {
     console.error("Webhook error:", err);
     return NextResponse.json(
