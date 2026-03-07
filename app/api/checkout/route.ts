@@ -14,7 +14,7 @@ const PRICE_ID: Record<Plan, string> = {
   basic: "price_1T6zEm8ibVtR5keHigRfsfSn",
   standard: "price_1T6yzG8ibVtR5keHaYKudoTW",
   premium: "price_1T6zFx8ibVtR5keH6CS5Qsu1",
-  mystery: "price_1T6zJV8ibVtR5keHmbWQzzRe",
+  mystery: "price_1T89bC8yI8oL3SNLqmnUsmLC",
 };
 
 const DUO_USD: Partial<Record<Plan, number>> = {
