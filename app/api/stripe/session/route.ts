@@ -1,8 +1,6 @@
 import { NextResponse } from "next/server";
 import Stripe from "stripe";
 
-export const runtime = "nodejs";
-
 export async function POST(req: Request) {
   try {
     const key = process.env.STRIPE_SECRET_KEY;
@@ -13,7 +11,10 @@ export async function POST(req: Request) {
       );
     }
 
-    const stripe = new Stripe(key);
+    // ✅ Cloudflare-safe Stripe client
+    const stripe = new Stripe(key, {
+      httpClient: Stripe.createFetchHttpClient(),
+    });
 
     const body = (await req.json().catch(() => ({}))) as any;
     const session_id =
@@ -49,7 +50,6 @@ export async function POST(req: Request) {
       ["canada", "ca"].includes(metaCountry) ||
       ["canada", "ca"].includes(stripeCountry);
 
-    // ✅ 以 Stripe 最後付款地址優先
     const normalizedProvince = stripeState || metaProvince;
     const isQuebecOrder =
       isCanadaOrder && ["qc", "quebec", "québec"].includes(normalizedProvince);
@@ -62,9 +62,12 @@ export async function POST(req: Request) {
       session_id: session.id,
       purchased_at: session.created ? session.created * 1000 : 0,
       quebec_blocked: isQuebecOrder,
+      amount_total: session.amount_total || 0,
+      currency: session.currency || "usd",
       metadata: {
         ...(session.metadata || {}),
-        customer_country: stripeCountry || session.metadata?.customer_country || "",
+        customer_country:
+          stripeCountry || session.metadata?.customer_country || "",
         customer_province:
           stripeState || session.metadata?.customer_province || "",
       },
