@@ -55,7 +55,10 @@ export async function POST(req: Request) {
       );
     }
 
-    const stripe = new Stripe(key);
+    // ✅ Cloudflare / Workers-safe Stripe client
+    const stripe = new Stripe(key, {
+      httpClient: Stripe.createFetchHttpClient(),
+    });
 
     const body = (await req.json().catch(() => ({}))) as Record<string, unknown>;
 
