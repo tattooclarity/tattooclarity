@@ -1907,7 +1907,7 @@ if (isQuebecBlocked) return;
               </div>
 
               <div style={{ fontSize: 10, color: 'rgba(0,0,0,0.45)', marginTop: 4, textAlign: 'right' }}>
-                Final price shown in USD.
+                Price includes applicable taxes.
               </div>
 
               {/* ✅ 更強版本：duo 先 show saving line（提升成交） */}
